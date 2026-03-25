@@ -27,7 +27,7 @@ pipeline {
     stages {
         stage('Maven build matching-ws') {
           steps {
-              sh "cd matching-ws && git checkout $GIT_BRANCH && mvn clean install -DskipTests"
+              sh "git checkout $GIT_BRANCH && mvn clean install -DskipTests"
           }
         }
 
@@ -36,8 +36,8 @@ pipeline {
             script {
               withCredentials([
                         usernamePassword(credentialsId: 'col', usernameVariable: 'CLB_USER', passwordVariable: 'CLB_PASSWORD')]) {
-                sh  "rm -Rf ${env.WORKSPACE}/matching-ws/index-build"
-                sh  "java $JVM_OPTIONS -jar ${env.WORKSPACE}/matching-ws/target/matching-ws-*-exec.jar  \
+                sh  "rm -Rf ${env.WORKSPACE}/index-build"
+                sh  "java $JVM_OPTIONS -jar ${env.WORKSPACE}/target/matching-ws-*-exec.jar  \
                      --add-opens=java.base/java.lang=ALL-UNNAMED \
                      --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
                      --add-opens=java.base/java.io=ALL-UNNAMED \
@@ -45,19 +45,19 @@ pipeline {
                      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
                      --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
                      --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
-                     --spring.cloud.bootstrap.location=${env.WORKSPACE}/matching-ws/src/main/resources/bootstrap.yml \
+                     --spring.cloud.bootstrap.location=${env.WORKSPACE}/src/main/resources/bootstrap.yml \
                      --mode=INDEX \
                      --server.port=0 \
-                     --index.path=${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/index \
-                     --export.path=${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports \
+                     --index.path=${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/index \
+                     --export.path=${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports \
                      --clb.dataset.id=$CLB_DATASET_ID \
                      --clb.identifier.dataset.ids=$CLB_IDENTIFIER_DATASET_IDS \
                      --clb.iucn.dataset.id=$CLB_IUCN_DATASET_ID \
                      --clb.url=$CLB_URL \
                      --clb.user=$CLB_USER \
                      --clb.password=$CLB_PASSWORD $EXTRA_RUN_ARGS && \
-                     tar zcvf ${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports.tgz ${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports && \
-                     rm -Rf ${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports"
+                     tar zcvf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports.tgz ${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports && \
+                     rm -Rf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports"
                 }
               }
             }
@@ -65,13 +65,13 @@ pipeline {
 
         stage('Setup index build artefacts') {
           steps {
-            sh "mkdir -p ${env.WORKSPACE}/matching-ws/index-build/code/conf"
-            sh "echo \"spring.cloud.zookeeper.discovery.metadata.timestamp=\$(date +%s)\" > ${env.WORKSPACE}/matching-ws/index-build/timestamp.properties"
-            sh "curl -o ${env.WORKSPACE}/matching-ws/index-build/code/dataset.json ${env.CLB_API_URL}/dataset/${env.CLB_DATASET_ID}.json"
-            sh "curl -o ${env.WORKSPACE}/matching-ws/index-build/code/git.json -H 'Accept: application/vnd.github+json' \"https://api.github.com/repos/catalogueoflife/backend/commits/\$(git rev-parse HEAD)\""
-            sh "cp ${env.WORKSPACE}/matching-ws/target/matching-ws-*-exec.jar ${env.WORKSPACE}/matching-ws/index-build/code/app.jar"
-            sh "cp ${env.WORKSPACE}/matching-ws/src/main/resources/bootstrap.yml ${env.WORKSPACE}/matching-ws/index-build/code/conf/bootstrap.yml"
-            sh "cp ${env.WORKSPACE}/matching-ws/src/main/resources/application.yml ${env.WORKSPACE}/matching-ws/index-build/code/conf/application.yml"
+            sh "mkdir -p ${env.WORKSPACE}/index-build/code/conf"
+            sh "echo \"spring.cloud.zookeeper.discovery.metadata.timestamp=\$(date +%s)\" > ${env.WORKSPACE}/index-build/timestamp.properties"
+            sh "curl -o ${env.WORKSPACE}/index-build/code/dataset.json ${env.CLB_API_URL}/dataset/${env.CLB_DATASET_ID}.json"
+            sh "curl -o ${env.WORKSPACE}/index-build/code/git.json -H 'Accept: application/vnd.github+json' \"https://api.github.com/repos/catalogueoflife/backend/commits/\$(git rev-parse HEAD)\""
+            sh "cp ${env.WORKSPACE}/target/matching-ws-*-exec.jar ${env.WORKSPACE}/index-build/code/app.jar"
+            sh "cp ${env.WORKSPACE}/src/main/resources/bootstrap.yml ${env.WORKSPACE}/index-build/code/conf/bootstrap.yml"
+            sh "cp ${env.WORKSPACE}/src/main/resources/application.yml ${env.WORKSPACE}/index-build/code/conf/application.yml"
           }
         }
 
