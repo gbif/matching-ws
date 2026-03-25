@@ -9,6 +9,7 @@
 
   <groupId>org.gbif</groupId>
   <artifactId>matching-ws</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
 
   <name>GBIF matching-ws</name>
   <description>GBIF occurrence matching index generation and web services for datasets stored in ChecklistBank.</description>
