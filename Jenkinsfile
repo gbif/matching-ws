@@ -11,7 +11,7 @@ pipeline {
         CLB_URL = credentials('col-prod-db')
     }
     parameters {
-        string(name: 'GIT_REPO', defaultValue: 'https://github.com/catalogueoflife/backend.git', description: 'GitHub repository URL')
+        string(name: 'GIT_REPO', defaultValue: 'https://github.com/gbif/matching-ws.git', description: 'GitHub repository URL')
         string(name: 'GIT_BRANCH', defaultValue: 'master', description: 'Branch to checkout')
         string(name: 'APP_ARTIFACT', defaultValue: 'matching-ws', description: 'The app artefact name')
         string(name: 'CLB_DATASET_ID', defaultValue: '', description: 'Checklistbank dataset ID')
@@ -37,7 +37,7 @@ pipeline {
               withCredentials([
                         usernamePassword(credentialsId: 'col', usernameVariable: 'CLB_USER', passwordVariable: 'CLB_PASSWORD')]) {
                 sh  "rm -Rf ${env.WORKSPACE}/index-build"
-                sh  "java $JVM_OPTIONS -jar ${env.WORKSPACE}/target/matching-ws-*-exec.jar  \
+                sh  "java $JVM_OPTIONS \
                      --add-opens=java.base/java.lang=ALL-UNNAMED \
                      --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
                      --add-opens=java.base/java.io=ALL-UNNAMED \
@@ -45,6 +45,7 @@ pipeline {
                      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
                      --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
                      --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
+                     -jar ${env.WORKSPACE}/target/matching-ws-*-exec.jar \
                      --spring.cloud.bootstrap.location=${env.WORKSPACE}/src/main/resources/bootstrap.yml \
                      --mode=INDEX \
                      --server.port=0 \
@@ -56,7 +57,7 @@ pipeline {
                      --clb.url=$CLB_URL \
                      --clb.user=$CLB_USER \
                      --clb.password=$CLB_PASSWORD $EXTRA_RUN_ARGS && \
-                     tar zcvf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports.tgz ${env.WORKSPACE}/matching-ws/index-build/data/$APP_ARTIFACT/exports && \
+                     tar zcvf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports.tgz ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports && \
                      rm -Rf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports"
                 }
               }
@@ -68,7 +69,7 @@ pipeline {
             sh "mkdir -p ${env.WORKSPACE}/index-build/code/conf"
             sh "echo \"spring.cloud.zookeeper.discovery.metadata.timestamp=\$(date +%s)\" > ${env.WORKSPACE}/index-build/timestamp.properties"
             sh "curl -o ${env.WORKSPACE}/index-build/code/dataset.json ${env.CLB_API_URL}/dataset/${env.CLB_DATASET_ID}.json"
-            sh "curl -o ${env.WORKSPACE}/index-build/code/git.json -H 'Accept: application/vnd.github+json' \"https://api.github.com/repos/catalogueoflife/backend/commits/\$(git rev-parse HEAD)\""
+            sh "curl -o ${env.WORKSPACE}/index-build/code/git.json -H 'Accept: application/vnd.github+json' \"https://api.github.com/repos/gbif/matching-ws/commits/\$(git rev-parse HEAD)\""
             sh "cp ${env.WORKSPACE}/target/matching-ws-*-exec.jar ${env.WORKSPACE}/index-build/code/app.jar"
             sh "cp ${env.WORKSPACE}/src/main/resources/bootstrap.yml ${env.WORKSPACE}/index-build/code/conf/bootstrap.yml"
             sh "cp ${env.WORKSPACE}/src/main/resources/application.yml ${env.WORKSPACE}/index-build/code/conf/application.yml"
@@ -83,7 +84,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker build -f matching-ws/Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=matching-ws/index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
+                      sh "docker build -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
                       sh "docker push docker.gbif.org/matching-ws:${FULL_TAG}"
 
                       // Tag and push the latest version if required
@@ -108,7 +109,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker buildx build --no-cache -f matching-ws/Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=matching-ws/index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ." 
+                      sh "docker buildx build --no-cache -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
 
                       // Tag and push the latest version if required
                       if (env.DOCKER_TAG_LATEST) {

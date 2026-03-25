@@ -39,6 +39,13 @@ EXPOSE $SERVER_PORT $SERVER_ADMIN_PORT
 USER $USER
 
 CMD java $JVM_OPTIONS \
+    --add-opens=java.base/java.lang=ALL-UNNAMED \
+    --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
+    --add-opens=java.base/java.io=ALL-UNNAMED \
+    --add-opens=java.base/java.util=ALL-UNNAMED \
+    --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
     -jar app.jar \
     --server.servlet.context-path=$SERVLET_CONTEXT_PATH \
     --server.port=$SERVER_PORT \
@@ -50,11 +57,4 @@ CMD java $JVM_OPTIONS \
     --spring.cloud.zookeeper.discovery.metadata.httpPort=$ZK_SERVER_PORT \
     --spring.cloud.zookeeper.discovery.metadata.timestamp=$ZK_TIMESTAMP \
     --spring.boot.admin.client.instance.metadata.infoUrl=$SERVICE_BASE_URL/v2/species/match/metadata \
-    --mode=RUN $EXTRA_RUN_ARGS \
-    --add-opens=java.base/java.lang=ALL-UNNAMED \
-    --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
-    --add-opens=java.base/java.io=ALL-UNNAMED \
-    --add-opens=java.base/java.util=ALL-UNNAMED \
-    --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
-    --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
-    --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
+    --mode=RUN $EXTRA_RUN_ARGS
