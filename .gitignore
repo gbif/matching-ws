@@ -30,5 +30,5 @@ release.properties
 logs/
 
 # Runtime data
-index/
-exports/
+/index/
+/exports/
