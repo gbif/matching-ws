@@ -22,6 +22,7 @@
   </scm>
 
   <properties>
+    <col.version>1.0.2</col.version>
     <java.version>21</java.version>
     <lucene.version>9.10.0</lucene.version>
     <spring-boot.version>2.7.18</spring-boot.version>
@@ -85,8 +86,77 @@
     </snapshotRepository>
   </distributionManagement>
 
+  <!--
+    The motherpom manages all org.catalogueoflife artifacts using ${project.version}.
+    Since matching-ws has its own version (1.0.0-SNAPSHOT), we must override them
+    all here to keep them pinned at the motherpom version (1.0.2).
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>api</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>coldp</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>core</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>dao</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>doi</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>importer</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>metadata</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>parser</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>pgcopy</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>reader</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>reader-xls</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>vocab</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
-    <!-- COL versions from motherpom -->
     <dependency>
       <groupId>org.catalogueoflife</groupId>
       <artifactId>vocab</artifactId>
