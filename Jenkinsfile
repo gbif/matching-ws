@@ -1,3 +1,5 @@
+@Library('gbif-common-jenkins-pipelines') _
+
 pipeline {
     agent any
     tools {
@@ -5,133 +7,78 @@ pipeline {
       jdk 'LibericaJDK21'
     }
     options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        skipDefaultCheckout(true)   // disables auto checkout - we wipe the workspace here
+        skipStagesAfterUnstable()
+        timestamps()
         ansiColor('xterm')
     }
-    environment {
-        CLB_URL = credentials('col-prod-db')
-    }
     parameters {
-        string(name: 'GIT_REPO', defaultValue: 'https://github.com/gbif/matching-ws.git', description: 'GitHub repository URL')
-        string(name: 'GIT_BRANCH', defaultValue: 'master', description: 'Branch to checkout')
-        string(name: 'APP_ARTIFACT', defaultValue: 'matching-ws', description: 'The app artefact name')
-        string(name: 'CLB_DATASET_ID', defaultValue: '', description: 'Checklistbank dataset ID')
-        string(name: 'CLB_API_URL', defaultValue: 'https://api.checklistbank.org', description: 'Checklistbank API URL')
-        string(name: 'CLB_IUCN_DATASET_ID', defaultValue: '53131', description: 'Checklistbank dataset ID for IUCN')
-        string(name: 'CLB_IDENTIFIER_DATASET_IDS', defaultValue: '', description: 'Comma separated list of Checklistbank dataset IDs')
-        string(name: 'EXTRA_RUN_ARGS', defaultValue: '', description: 'Additional run args for docker')
-        string(name: 'JVM_OPTIONS', defaultValue: '-Xmx2g -Xmx1g', description: 'JVM options for docker')
-        string(name: 'DOCKER_TAG', defaultValue: 'worms', description: 'The docker tag to use')
-        booleanParam(name: 'DOCKER_TAG_LATEST', defaultValue: true, description: 'Whether to great latest tag')
+        separator(name: "release_separator", sectionHeader: "Release Parameters")
+        booleanParam(name: 'RELEASE', defaultValue: false, description: 'Do a Maven release')
+        string(name: 'RELEASE_VERSION', defaultValue: '', description: 'Release version (optional)')
+        string(name: 'DEVELOPMENT_VERSION', defaultValue: '', description: 'Development version (optional)')
     }
-
     stages {
-        stage('Maven build matching-ws') {
-          steps {
-              sh "mvn clean install -DskipTests"
-          }
-        }
-
-        stage('Generate lucene index') {
-          steps {
-            script {
-              withCredentials([
-                        usernamePassword(credentialsId: 'col', usernameVariable: 'CLB_USER', passwordVariable: 'CLB_PASSWORD')]) {
-                sh  "rm -Rf ${env.WORKSPACE}/index-build"
-                sh  "java $JVM_OPTIONS \
-                     --add-opens=java.base/java.lang=ALL-UNNAMED \
-                     --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
-                     --add-opens=java.base/java.io=ALL-UNNAMED \
-                     --add-opens=java.base/java.util=ALL-UNNAMED \
-                     --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
-                     --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
-                     --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
-                     -jar ${env.WORKSPACE}/target/matching-ws-*-exec.jar \
-                     --spring.cloud.bootstrap.location=${env.WORKSPACE}/src/main/resources/bootstrap.yml \
-                     --mode=INDEX \
-                     --server.port=0 \
-                     --index.path=${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/index \
-                     --export.path=${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports \
-                     --clb.dataset.id=$CLB_DATASET_ID \
-                     --clb.identifier.dataset.ids=$CLB_IDENTIFIER_DATASET_IDS \
-                     --clb.iucn.dataset.id=$CLB_IUCN_DATASET_ID \
-                     --clb.url=$CLB_URL \
-                     --clb.user=$CLB_USER \
-                     --clb.password=$CLB_PASSWORD $EXTRA_RUN_ARGS && \
-                     tar zcvf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports.tgz ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports && \
-                     rm -Rf ${env.WORKSPACE}/index-build/data/$APP_ARTIFACT/exports"
-                }
-              }
+        stage('Checkout') {
+            steps {
+                deleteDir()             // clean workspace
+                checkout scm            // fresh clone
             }
-          }
-
-        stage('Setup index build artefacts') {
-          steps {
-            sh "mkdir -p ${env.WORKSPACE}/index-build/code/conf"
-            sh "echo \"spring.cloud.zookeeper.discovery.metadata.timestamp=\$(date +%s)\" > ${env.WORKSPACE}/index-build/timestamp.properties"
-            sh "curl -o ${env.WORKSPACE}/index-build/code/dataset.json ${env.CLB_API_URL}/dataset/${env.CLB_DATASET_ID}.json"
-            sh "curl -o ${env.WORKSPACE}/index-build/code/git.json -H 'Accept: application/vnd.github+json' \"https://api.github.com/repos/gbif/matching-ws/commits/\$(git rev-parse HEAD)\""
-            sh "cp ${env.WORKSPACE}/target/matching-ws-*-exec.jar ${env.WORKSPACE}/index-build/code/app.jar"
-            sh "cp ${env.WORKSPACE}/src/main/resources/bootstrap.yml ${env.WORKSPACE}/index-build/code/conf/bootstrap.yml"
-            sh "cp ${env.WORKSPACE}/src/main/resources/application.yml ${env.WORKSPACE}/index-build/code/conf/application.yml"
-          }
         }
 
-        stage('Build Docker Image for linux/amd64') {
-              steps {
-                  script {
-                      PLATFORM = "amd64"
-                      TIMESTAMP = new Date().format("yyyyMMdd-HHmmss")
-                      FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
-
-                      // Run Docker build with parameters
-                      sh "docker build -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
-                      sh "docker push docker.gbif.org/matching-ws:${FULL_TAG}"
-
-                      // Tag and push the latest version if required
-                      if (env.DOCKER_TAG_LATEST) {
-                          sh "docker tag docker.gbif.org/matching-ws:${FULL_TAG} docker.gbif.org/matching-ws:${DOCKER_TAG}-${PLATFORM}-latest"
-                          sh "docker push docker.gbif.org/matching-ws:${DOCKER_TAG}-${PLATFORM}-latest"
-                          sh "docker tag docker.gbif.org/matching-ws:${DOCKER_TAG}-${PLATFORM}-latest docker.gbif.org/matching-ws:${DOCKER_TAG}-latest"
-                          sh "docker push docker.gbif.org/matching-ws:${DOCKER_TAG}-latest"
-                          sh "docker rmi docker.gbif.org/matching-ws:${DOCKER_TAG}-${PLATFORM}-latest docker.gbif.org/matching-ws:${DOCKER_TAG}-latest"
-                      }
-
-                      sh "docker rmi docker.gbif.org/matching-ws:${FULL_TAG}"
-                  }
-              }
+        stage('Maven build') {
+            when {
+                allOf {
+                    not { expression { params.RELEASE } };
+                }
+            }
+            steps {
+                withMaven(
+                        globalMavenSettingsConfig: 'org.jenkinsci.plugins.configfiles.maven.GlobalMavenSettingsConfig1387378707709',
+                        mavenOpts: '-Xmx2048m -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS',
+                        mavenSettingsConfig: 'b043019e-79d8-48fd-8ecf-b20e3fb0a3cc',
+                        traceability: true
+                ) {
+                    sh '''mvn clean -U -T 4 deploy'''
+                }
+            }
         }
 
-        stage('Build Docker Image for linux/arm64') {
-              steps {
-                  script {
-                      PLATFORM = "arm64"
-                      TIMESTAMP = new Date().format("yyyyMMdd-HHmmss")
-                      FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
-
-                      // Run Docker build with parameters
-                      sh "docker buildx build --no-cache -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
-
-                      // Tag and push the latest version if required
-                      if (env.DOCKER_TAG_LATEST) {
-                          sh "docker buildx imagetools create -t docker.gbif.org/matching-ws:${DOCKER_TAG}-${PLATFORM}-latest docker.gbif.org/matching-ws:${FULL_TAG}"
-                      }
-                  }
-              }
+        stage('Maven release: Main project') {
+            when {
+                allOf {
+                    expression { params.RELEASE };
+                    branch 'master';
+                }
+            }
+            steps {
+                script {
+                    def releaseArgs = utils.createReleaseArgs(params.RELEASE_VERSION, params.DEVELOPMENT_VERSION, false)
+                    configFileProvider(
+                            [configFile(fileId: 'org.jenkinsci.plugins.configfiles.maven.GlobalMavenSettingsConfig1387378707709',
+                                    variable: 'MAVEN_SETTINGS_XML')]) {
+                        git 'https://github.com/gbif/matching-ws.git'
+                        sh "mvn -s \$MAVEN_SETTINGS_XML -B -Denforcer.skip=true -Darguments=\"-DskipTests -DskipITs\" release:prepare release:perform -Dtag=v${params.RELEASE_VERSION} ${releaseArgs}"
+                    }
+                }
+            }
         }
     }
+
     // 🔔 Email notifications
     post {
         failure {
+            echo 'Pipeline execution failed!'
             emailext(
                 to: 'dmartin@gbif.org',
-                subject: "matching-ws docker image FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "matching-ws build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """\
                     Build failed!
 
                     Project: ${env.JOB_NAME}
                     Build Number: ${env.BUILD_NUMBER}
-                    Branch: ${params.GIT_BRANCH}
-                    Dataset ID: ${params.CLB_DATASET_ID}
                     URL: ${env.BUILD_URL}
 
                     Please check the Jenkins logs for details.
@@ -139,18 +86,7 @@ pipeline {
             )
         }
         success {
-            emailext(
-                to: 'dmartin@gbif.org',
-                subject: "matching-ws docker image SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """\
-                  Build succeeded!
-
-                  Project: ${env.JOB_NAME}
-                  Build Number: ${env.BUILD_NUMBER}
-                  Branch: ${params.GIT_BRANCH}
-                  URL: ${env.BUILD_URL}
-                  """
-            )
+            echo 'Pipeline executed successfully!'
         }
     }
 
