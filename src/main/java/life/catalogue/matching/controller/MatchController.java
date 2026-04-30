@@ -77,6 +77,14 @@ public class MatchController implements ErrorController {
       name = "Order",
       properties = @ExtensionProperty(name = "Order", value = "0130")))
   @Tag(name = "Metadata", description = "Metadata about the matching service, including details on the indexes and software")
+  @Parameters(
+      value = {
+          @Parameter(
+              name = "checklistKey",
+              description = "The dataset key of the checklist to match against.",
+              in = ParameterIn.QUERY, schema = @Schema(implementation = UUID.class))
+      }
+  )
   @GetMapping(
     value = {"v2/species/match/metadata"},
     produces = "application/json")
@@ -100,6 +108,10 @@ public class MatchController implements ErrorController {
   @Tag(name = "Searching names", description = "Matching services for scientific names and taxon identifiers")
   @Parameters(
       value = {
+        @Parameter(
+            name = "checklistKey",
+            description = "The dataset key of the checklist to match against.",
+            in = ParameterIn.QUERY, schema = @Schema(implementation = UUID.class)),
         @Parameter(
           name = "usageKey",
           description = "The usage key to look up. When provided, all other fields are ignored."),
