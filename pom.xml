@@ -1,5 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.catalogueoflife</groupId>
@@ -9,7 +8,7 @@
 
   <groupId>org.gbif</groupId>
   <artifactId>matching-ws</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>1.0.0</version>
 
   <name>GBIF matching-ws</name>
   <description>GBIF occurrence matching index generation and web services for datasets stored in ChecklistBank.</description>
@@ -18,7 +17,7 @@
       <connection>scm:git:git@github.com:gbif/matching-ws.git</connection>
       <url>https://github.com/gbif/matching-ws</url>
       <developerConnection>scm:git:git@github.com:gbif/matching-ws.git</developerConnection>
-      <tag>HEAD</tag>
+      <tag>v</tag>
   </scm>
 
   <properties>
