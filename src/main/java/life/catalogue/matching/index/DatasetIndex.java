@@ -1,5 +1,7 @@
 package life.catalogue.matching.index;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import life.catalogue.api.vocab.MatchType;
 import life.catalogue.api.vocab.TaxonomicStatus;
 import life.catalogue.matching.Main;
@@ -66,6 +68,7 @@ public class DatasetIndex {
   public static final String TAXON_COUNT = "taxonCount";
   public static final String MATCHES_TO_MAIN_INDEX = "matchesToMainIndex";
   private IndexSearcher searcher;
+  private Dataset coreDataset;
   private Map<Dataset, IndexSearcher> identifierSearchers = new HashMap<>();
   private Map<Dataset, IndexSearcher> ancillarySearchers = new HashMap<>();
 
@@ -102,6 +105,7 @@ public class DatasetIndex {
 
     MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     final String mainIndexPath = getMainIndexPath();
+
     final Map<Integer, Dataset> prefixMapping = loadPrefixMapping();
 
     if (new File(mainIndexPath).exists()) {
@@ -114,6 +118,7 @@ public class DatasetIndex {
         log.warn("Cannot open lucene index. Index not available", e);
       }
       log.info("Loaded lucene index from {}", mainIndexPath);
+      this.coreDataset = initialiseCoreIndexDataset(MAIN_INDEX_DIR, prefixMapping);
 
       // load identifier indexes
       log.debug("Loading identifier indexes from {}", IDENTIFIERS_DIR);
@@ -146,6 +151,28 @@ public class DatasetIndex {
     }
   }
 
+  private Dataset initialiseCoreIndexDataset(String mainIndexPath, Map<Integer, Dataset> prefixMapping) {
+
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      Dataset dataset = mapper.readValue(new FileReader(indexPath + "/"  + mainIndexPath + "/" + METADATA_JSON), Dataset.class);
+
+      // apply prefix mapping
+      Dataset prefixDatasetConfig = prefixMapping.get(dataset.getClbKey());
+      if (prefixDatasetConfig != null) {
+        dataset.setIndexedPrefix(prefixDatasetConfig.getIndexedPrefix());
+        dataset.setRecognisedPrefixes(prefixDatasetConfig.getRecognisedPrefixes());
+        dataset.setPrefixToAddToOutput(prefixDatasetConfig.getPrefixToAddToOutput());
+        dataset.setRemovePrefixForMatching(prefixDatasetConfig.getRemovePrefixForMatching());
+      }
+
+      return dataset;
+    }  catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+
   private HashMap<Dataset, IndexSearcher> initialiseAdditionalIndexes(String directoryName, Map<Integer, Dataset> prefixMapping) {
     HashMap<Dataset, IndexSearcher> searchers = new HashMap<>();
     if (Path.of(indexPath + "/" + directoryName).toFile().exists()) {
@@ -162,8 +189,9 @@ public class DatasetIndex {
               // apply prefix mapping
               Dataset prefixDatasetConfig = prefixMapping.get(dataset.getClbKey());
               if (prefixDatasetConfig != null) {
-                dataset.setPrefix(prefixDatasetConfig.getPrefix());
-                dataset.setPrefixMapping(prefixDatasetConfig.getPrefixMapping());
+                dataset.setIndexedPrefix(prefixDatasetConfig.getIndexedPrefix());
+                dataset.setRecognisedPrefixes(prefixDatasetConfig.getRecognisedPrefixes());
+                dataset.setPrefixToAddToOutput(prefixDatasetConfig.getPrefixToAddToOutput());
                 dataset.setRemovePrefixForMatching(prefixDatasetConfig.getRemovePrefixForMatching());
               }
 
@@ -187,16 +215,17 @@ public class DatasetIndex {
   private Map<Integer, Dataset> loadPrefixMapping() {
     ClassLoader classLoader = Main.class.getClassLoader();
 
-    try (InputStream inputStream = classLoader.getResourceAsStream(DATASETS_JSON)) {
+    try (InputStream inputStream = classLoader.getResourceAsStream(DATASETS_YAML)) {
       log.debug("Loading identifier prefix mapping");
       if (inputStream == null) {
         return Map.of();
       }
 
-      ObjectMapper mapper = new ObjectMapper();
-      Dataset[] datasets = mapper.readValue(inputStream, Dataset[].class);
+      // read the YAML file
+      ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+      List<Dataset> datasets = mapper.readValue(inputStream, new TypeReference<>() {});
 
-      return Arrays.stream(datasets)
+      return datasets.stream()
         .peek(dataset -> log.debug("Loaded dataset {} [{}]", dataset.getTitle(), dataset.getClbKey()))
         .collect(Collectors.toMap(Dataset::getClbKey, dataset -> dataset));
     } catch (IOException e) {
@@ -445,6 +474,9 @@ public class DatasetIndex {
    * @return NameUsageMatch
    */
   public NameUsageMatch matchByUsageKey(String usageKey) {
+
+
+
     return matchByKey(usageKey, this::getByUsageKey);
   }
 
@@ -526,7 +558,12 @@ public class DatasetIndex {
 
           // if configured, remove the prefix
           if (dataset.getRemovePrefixForMatching()){
-            identifier = identifier.replace(dataset.getPrefix(), "");
+            for (String toRemove: dataset.getRecognisedPrefixes()) {
+              if (identifier.startsWith(toRemove)) {
+                identifier = identifier.replace(toRemove, "");
+                break;
+              }
+            }
           }
 
           // find the index and search it
@@ -592,7 +629,11 @@ public class DatasetIndex {
 
             // if configured, remove the prefix
             if (dataset.getRemovePrefixForMatching()){
-              identifier = identifier.replace(dataset.getPrefix(), "");
+              for (String toRemove: dataset.getRecognisedPrefixes()) {
+                if (identifier.startsWith(toRemove)) {
+                  identifier = identifier.replace(toRemove, "");
+                }
+              }
             }
 
             // find the index and search it
@@ -617,8 +658,20 @@ public class DatasetIndex {
   }
 
   private static ExternalID toExternalID(Document doc, Dataset dataset) {
+
+    String idToUse = doc.get(FIELD_ID);
+    String idWithoutPrefix = idToUse;
+    for (String prefix : dataset.getRecognisedPrefixes()) {
+        if (idToUse.startsWith(prefix)) {
+          idWithoutPrefix = idToUse.replace(prefix, "");
+          break;
+        }
+    }
+
+    final String cleanID = idWithoutPrefix;
+
     return ExternalID.builder()
-      .id(doc.get(FIELD_ID))
+      .id(idToUse)
       .clbDatasetKey(dataset.getClbKey().toString())
       .datasetKey(dataset.getDatasetKey())
       .datasetTitle(dataset.getTitle())
@@ -628,6 +681,9 @@ public class DatasetIndex {
       .parentID(doc.get(FIELD_PARENT_ID))
       .status(doc.get(FIELD_STATUS))
       .mainIndexID(doc.get(FIELD_JOIN_ID))
+      .recognisedVariants(dataset.getRecognisedPrefixes()
+              .stream().map(variant -> variant + cleanID).collect(Collectors.toList())
+      )
       .build();
   }
 
@@ -639,6 +695,42 @@ public class DatasetIndex {
    * @return NameUsageMatch
    */
   public NameUsageMatch matchByExternalKey(String suppliedKey, MatchingIssue notFoundIssue, MatchingIssue ignoredIssue) {
+
+    //
+    if (coreDataset.getRecognisedPrefixes() != null && !coreDataset.getRecognisedPrefixes().isEmpty()) {
+      if (hasRecognisedPrefix(suppliedKey, coreDataset)) {
+
+        String idToUse = suppliedKey;
+        if (coreDataset.getRemovePrefixForMatching()) {
+          for (String toRemove: coreDataset.getRecognisedPrefixes()) {
+            if (suppliedKey.startsWith(toRemove)) {
+              idToUse = suppliedKey.replace(toRemove, "");
+              break;
+            }
+          }
+        }
+
+        try {
+          Query identifierQuery = new TermQuery(new Term(FIELD_ID, idToUse));
+          TopDocs identifierDocs = searcher.search(identifierQuery, 1);
+          if (identifierDocs.totalHits.value > 0) {
+            // success - build the name match
+            NameUsageMatch idMatch = fromDoc(getSearcher().storedFields().document(identifierDocs.scoreDocs[0].doc));
+            idMatch.getDiagnostics().setConfidence(100);
+            idMatch.getDiagnostics().setMatchType(MatchType.EXACT);
+            Document identifierDoc = searcher.storedFields().document(identifierDocs.scoreDocs[0].doc);
+            idMatch.getDiagnostics().setMatchedID(toExternalID(identifierDoc, coreDataset));
+            return idMatch;
+          } else {
+            log.warn("Cannot find usage {} in main lucene index after " +
+                    "finding it in identifier index for {}", suppliedKey, coreDataset.getClbKey());
+            return noMatch(ignoredIssue, "Identifier recognised in {}, but not matching in main index" + coreDataset.getClbKey());
+          }
+        } catch (IOException e) {
+          log.error("Problem querying main index with {}", suppliedKey, e);
+        }
+      }
+    }
 
     // if join indexes are present, add them to the match
     if (identifierSearchers != null && !identifierSearchers.isEmpty()){
@@ -692,36 +784,48 @@ public class DatasetIndex {
     return NO_MATCH;
   }
 
+  /**
+   * Extract the key to search with using the configuration for this dataset.
+   *
+   * @param key original supplied key
+   * @param dataset the dataset associated with the key
+   * @return extracted key
+   */
   public static Optional<String> extractKeyForSearch(String key, Dataset dataset) {
+
     if (!hasRecognisedPrefix(key, dataset)) {
       // only search indexes with matching prefixes
       return Optional.empty();
     }
 
     // use the prefix mapping
-    if (dataset.getPrefixMapping() != null && !dataset.getPrefixMapping().isEmpty()) {
-      for (String prefix : dataset.getPrefixMapping()) {
+    if (dataset.getRemovePrefixForMatching()) {
+      for (String prefix : dataset.getRecognisedPrefixes()) {
         if (key.startsWith(prefix)) {
-          key = key.replace(prefix, dataset.getPrefix());
+          key = key.replace(prefix, "");
         }
       }
+
+      // add the required prefix for matching
+      key = dataset.getIndexedPrefix() + key;
     }
 
-    // if configured, remove the prefix
-    if (dataset.getRemovePrefixForMatching() != null && dataset.getRemovePrefixForMatching()){
-      key = key.replace(dataset.getPrefix(), "");
-    }
     log.debug("Searching for identifier {} in dataset {}", key, dataset.getClbKey());
     return Optional.of(key);
   }
 
   private static boolean hasRecognisedPrefix(String key, Dataset dataset) {
-    if (dataset.getPrefix() == null){
+    if (dataset.getRecognisedPrefixes() == null || dataset.getRecognisedPrefixes().isEmpty()) {
       return false;
     }
-    if (key.startsWith(dataset.getPrefix()))
-      return true;
-    return dataset.getPrefixMapping().stream().anyMatch(key::startsWith);
+
+    for (String prefix : dataset.getRecognisedPrefixes()) {
+      if (key.startsWith(prefix)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private static NameUsageMatch noMatch(MatchingIssue issue, String note) {

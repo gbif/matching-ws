@@ -24,9 +24,10 @@ public class Dataset {
   String datasetKey;
   String title;
   String alias;
-  String prefix;
-  List<String> prefixMapping = List.of();
+  List<String> recognisedPrefixes = List.of();
+  String indexedPrefix = "";
+  String prefixToAddToOutput = "";
+  Boolean removePrefixForMatching = false;
   Long taxonCount = 0L;
   Long matchesToMainIndex = 0L;
-  Boolean removePrefixForMatching = false;
 }

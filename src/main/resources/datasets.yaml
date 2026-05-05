@@ -1,0 +1,88 @@
+# Recognise ids of the form gbif:1 = Animalia, strip the prefix for matching.
+- title: "GBIF Backbone Taxonomy"
+  alias: "GBIF"
+  clbKey: "53147"
+  datasetKey: "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "gbif:"
+    - "https?://www.gbif.org/species/1"
+  prefixToAddToOutput: "https://www.gbif.org/species/"
+  removePrefixForMatching: true
+
+# Recognise ids of the form iucn:180593985 = Calidris ferruginea, strip the prefix for matching.
+- title: "IUCN Red List"
+  alias: "IUCN"
+  clbKey: "53131"
+  datasetKey: "19491596-35ae-4a91-9a98-85cf505f1bd3"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "iucn:"
+  prefixToAddToOutput: ""
+  removePrefixForMatching: true
+
+# Recognise the 3 configured prefixes removing all, add, "urn:lsid:ipni.org:names:" to output
+- title: "International Plant Names Index"
+  alias: "IPNI"
+  clbKey: "2006"
+  datasetKey: "046bbc50-cae2-47ff-aa43-729fbf53f7c5"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "urn:lsid:ipni.org:names:"
+    - "ipni:"
+    - "https://www.ipni.org/n/"
+  # the source data doesnt include the lsid prefix, so add it to output
+  prefixToAddToOutput: "urn:lsid:ipni.org:names:"
+  removePrefixForMatching: true
+
+# Strip the recognised prefixes for matching, but add the lsid prefix before matching
+- title: "World Register of Marine Species"
+  alias: "WoRMS"
+  clbKey: "2011"
+  datasetKey: "2d59e5db-57ad-41ff-97d6-11f5fb264527"
+  indexedPrefix: "urn:lsid:marinespecies.org:taxname:"
+  recognisedPrefixes:
+    - "urn:lsid:marinespecies.org:taxname:"
+    - "worms:"
+    - "AphiaID:"
+    - "http://marinespecies.org/data.php?id="
+    - "https://marinespecies.org/data.php?id="
+    - "https://www.marinespecies.org/aphia.php?p=taxdetails&id="
+   # the source data includes the lsid prefix which is indexed
+  prefixToAddToOutput: ""
+  removePrefixForMatching: true
+
+# Don't remove the recognised prefixes for matching, add nothing to output
+- title: "UK Species Inventory"
+  alias: "UKSI"
+  clbKey: "7888"
+  datasetKey: "dbaa27eb-29e7-4cbb-8eab-3f689cfce116"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "NHMSYS"
+    - "NBNSYS"
+  prefixToAddToOutput: ""
+  removePrefixForMatching: false
+
+- title: "Dyntaxa. Svensk taxonomisk databas"
+  alias: "Dyntaxa"
+  clbKey: "2041"
+  datasetKey: "de8934f4-a136-481c-a87a-b0b202b80a31"
+  indexedPrefix: "urn:lsid:dyntaxa.se:Taxon:"
+  recognisedPrefixes:
+    - "urn:lsid:dyntaxa.se:Taxon:"
+    - "urn:lsid:dyntaxa.se:taxon:"
+  prefixToAddToOutput: ""
+  removePrefixForMatching: true
+
+- title: "Integrated Taxonomic Information System"
+  alias: "ITIS"
+  clbKey: "2144"
+  datasetKey: "9ca92552-f23a-41a8-a140-01abaa31c931"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "itis:"
+    - "tsn:"
+    - "https://www.itis.gov/servlet/SingleRpt/SingleRpt?search_topic=TSN&search_value="
+  prefixToAddToOutput: ""
+  removePrefixForMatching: true

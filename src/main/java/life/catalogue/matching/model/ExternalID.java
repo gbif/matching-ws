@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * An identifier from another checklist that may be associated with a name usage in the main index
  */
@@ -38,4 +40,6 @@ public class ExternalID {
     private String rank;
     @Schema(description = "The status of the external identifier")
     private String status;
+    @Schema(description = "Recognised variants of this ID")
+    private List<String> recognisedVariants;
 }

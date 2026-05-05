@@ -30,7 +30,7 @@ public class IndexConstants {
   public static final String IDENTIFIERS_DIR = "identifiers";
   public static final String ANCILLARY_DIR = "ancillary";
   public static final String METADATA_JSON = "metadata.json";
-  public static final String DATASETS_JSON = "datasets.json";
+  public static final String DATASETS_YAML = "datasets.yaml";
   public static final String GIT_JSON = "git.json";
   public static final String INDEX_CSV = "index.csv";
   public static final String IUCN_THREAT_STATUS = "iucn:threatStatus";
