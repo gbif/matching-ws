@@ -8,7 +8,7 @@
 
   <groupId>org.gbif</groupId>
   <artifactId>matching-ws</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1-SNAPSHOT</version>
 
   <name>GBIF matching-ws</name>
   <description>GBIF occurrence matching index generation and web services for datasets stored in ChecklistBank.</description>
@@ -17,7 +17,7 @@
       <connection>scm:git:git@github.com:gbif/matching-ws.git</connection>
       <url>https://github.com/gbif/matching-ws</url>
       <developerConnection>scm:git:git@github.com:gbif/matching-ws.git</developerConnection>
-      <tag>v</tag>
+      <tag>HEAD</tag>
   </scm>
 
   <properties>
