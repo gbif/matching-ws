@@ -457,6 +457,7 @@ public class DatasetIndex {
     DatasetIndex datasetIndex = new DatasetIndex();
     datasetIndex.initWithDir(mainIndexDir);
     datasetIndex.ioUtil = new IOUtil();
+    datasetIndex.coreDataset = Dataset.builder().build();
     return datasetIndex;
   }
 

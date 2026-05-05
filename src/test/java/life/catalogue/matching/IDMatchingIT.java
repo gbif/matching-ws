@@ -62,10 +62,11 @@ public class IDMatchingIT {
     dataset.setClbKey(1);
     dataset.setAlias("DUMMY_IDS");
     dataset.setTitle("Dummy dataset for testing");
-    dataset.setPrefix("ext-");
-    dataset.setPrefixMapping(List.of("other-ext-", "other-ext2-"));
+    dataset.setIndexedPrefix("");
+    dataset.setRecognisedPrefixes(List.of("ext-", "other-ext-", "other-ext2-"));
     dataset.setTaxonCount(counts[0]);
     dataset.setMatchesToMainIndex(counts[1]);
+    dataset.setRemovePrefixForMatching(false);
     datasetIndex.initWithIdentifierDir(dataset, joinIndex);
   }
 
