@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit;
 public class ApiLogger {
 
   public static void logRequest(Logger log, String requestPath, NameUsageQuery query, StopWatch watch) {
+    logRequest(log, requestPath, query, watch.getTime(TimeUnit.MILLISECONDS));
+  }
+  public static void logRequest(Logger log, String requestPath, NameUsageQuery query, long time) {
     if (log.isInfoEnabled()) {
       StringJoiner joiner = new StringJoiner(", ");
       addIfNotNull(joiner, query.usageKey);
@@ -27,7 +30,7 @@ public class ApiLogger {
       addIfNotNull(joiner, query.specificEpithet);
       addIfNotNull(joiner, query.classification);
 
-      MDC.put("executionTime",  watch.getTime(TimeUnit.MILLISECONDS) + "ms");
+      MDC.put("executionTime",  time + "ms");
       MDC.put("requestPath", requestPath);
       log.info(joiner.toString());
       MDC.clear();

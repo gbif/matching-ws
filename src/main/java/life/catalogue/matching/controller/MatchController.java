@@ -5,6 +5,7 @@ import life.catalogue.matching.service.MatchingService;
 import org.gbif.nameparser.api.Rank;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.time.StopWatch;
 import org.springdoc.api.annotations.ParameterObject;
@@ -13,9 +14,7 @@ import org.springframework.boot.web.error.ErrorAttributeOptions;
 import org.springframework.boot.web.servlet.error.ErrorAttributes;
 import org.springframework.boot.web.servlet.error.ErrorController;
 import org.springframework.util.Assert;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.WebRequest;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +23,8 @@ import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.extensions.Extension;
 import io.swagger.v3.oas.annotations.extensions.ExtensionProperty;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -270,8 +271,6 @@ public class MatchController implements ErrorController {
       @RequestParam(value = "verbose", required = false) Boolean verbose,
       HttpServletRequest response) {
 
-    StopWatch watch = new StopWatch();
-    watch.start();
     // ugly, but jackson/spring isn't working with @JsonProperty
     classification.setClazz(response.getParameter("class"));
     NameUsageQuery query = NameUsageQuery.create(
@@ -290,15 +289,57 @@ public class MatchController implements ErrorController {
         exclude,
         strict,
         verbose);
-      NameUsageMatch nameUsageMatch = matchingService.match(query);
-      watch.stop();
-      logRequest(MatchController.log, V2_SPECIES_MATCH, query, watch);
-      nameUsageMatch.getDiagnostics().setTimeTaken(watch.getTime(TimeUnit.MILLISECONDS));
+      NameUsageMatch nameUsageMatch = match(query);
+      logRequest(MatchController.log, V2_SPECIES_MATCH, query, nameUsageMatch.getDiagnostics().getTimeTaken());
       return nameUsageMatch;
   }
 
+  private NameUsageMatch match(NameUsageQuery query) {
+    StopWatch watch = StopWatch.createStarted();
+    NameUsageMatch nameUsageMatch = matchingService.match(query);
+    watch.stop();
+    nameUsageMatch.getDiagnostics().setTimeTaken(watch.getTime(TimeUnit.MILLISECONDS));
+    return nameUsageMatch;
+  }
+
+  @Operation(
+      operationId = "matchNamesBatch",
+      summary = "Batch fuzzy name match service (Version 2)",
+      description =
+          "Fuzzy matches a list of scientific names against the taxonomy in a single request. "
+              + "Each query in the array is matched independently using the same logic as the GET endpoint: "
+              + "optional classification context is used when no direct name match is found, "
+              + "and a `usageKey` short-circuits name-based matching when provided.\n\n"
+              + "Request body: an array of up to 1000 `NameUsageQuery` objects. "
+              + "Results are returned in the same order as the input.",
+      extensions =
+          @Extension(
+              name = "Order",
+              properties = @ExtensionProperty(name = "Order", value = "0131")))
+  @Tag(name = "Searching names", description = "Matching services for scientific names and taxon identifiers")
+  @ApiResponse(
+      responseCode = "200",
+      description = "Match results in the same order as the input queries",
+      content =
+          @Content(
+              mediaType = "application/json",
+              array = @ArraySchema(schema = @Schema(implementation = NameUsageMatch.class))))
+  @PostMapping(
+      value = {V2_SPECIES_MATCH},
+      produces = "application/json")
+  public List<NameUsageMatch> match(@RequestBody List<NameUsageQuery> queries) {
+    if (queries == null || queries.isEmpty()) {
+      throw new IllegalArgumentException("No queries provided");
+    } else if (queries.size() > 1000) {
+      throw new IllegalArgumentException("Too many queries provided, max 1000");
+    }
+    return queries.stream()
+        .map(matchingService::match)
+        .toList();
+  }
+
   @Hidden
-  @GetMapping(value = ERROR_PATH, produces = "application/json")
+  @RequestMapping(value = ERROR_PATH, produces = "application/json")
   public Map<String, Object> error(WebRequest request) {
     Map<String, Object> errorAttributes = getErrorAttributes(request);
     String traceRequested = request.getParameter("trace");

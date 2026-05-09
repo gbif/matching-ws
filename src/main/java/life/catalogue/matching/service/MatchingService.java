@@ -304,8 +304,8 @@ public class MatchingService {
       query.rank,
       query.classification,
       query.exclude,
-      query.strict,
-      query.verbose);
+      Boolean.TRUE.equals(query.strict),
+      Boolean.TRUE.equals(query.verbose));
     if (sciNameMatch != null) {
       Optional.ofNullable(sciNameMatch.getDiagnostics().getTimings()).ifPresent(sTimings ->
         sTimings.forEach((key, value) ->
