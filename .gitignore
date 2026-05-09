@@ -21,6 +21,7 @@ release.properties
 
 # Claude Code
 .claude/
+**/.factorypath
 
 # macOS
 .DS_Store
@@ -32,3 +33,6 @@ logs/
 # Runtime data
 /index/
 /exports/
+
+# local spring profiles
+application-*.yml
