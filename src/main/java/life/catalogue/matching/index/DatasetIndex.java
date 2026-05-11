@@ -63,6 +63,7 @@ import static life.catalogue.matching.util.IndexConstants.*;
 public class DatasetIndex {
 
   public static final String CLB_KEY = "clbKey";
+  public static final String DATASET_ALIAS = "datasetAlias";
   public static final String DATASET_TITLE = "datasetTitle";
   public static final String DATASET_KEY = "datasetKey";
   public static final String TAXON_COUNT = "taxonCount";
@@ -352,6 +353,7 @@ public class DatasetIndex {
     }
 
     Map<String, Object> datasetInfo = getDatasetInfo(indexPath);
+    metadata.setDatasetAlias((String) datasetInfo.getOrDefault(DATASET_ALIAS, null));
     metadata.setDatasetTitle((String) datasetInfo.getOrDefault(DATASET_TITLE, null));
     metadata.setClbDatasetKey((String) datasetInfo.getOrDefault(CLB_KEY, null));
     metadata.setDatasetKey((String) datasetInfo.getOrDefault(DATASET_KEY, null));
@@ -431,6 +433,7 @@ public class DatasetIndex {
 
         return Map.of(
         CLB_KEY, root.path(CLB_KEY).asText(),
+        DATASET_ALIAS, root.path("alias").asText(),
         DATASET_TITLE, root.path("title").asText(),
         DATASET_KEY, root.path(DATASET_KEY).asText(),
         TAXON_COUNT, root.path(TAXON_COUNT).asText(),

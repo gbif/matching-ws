@@ -21,6 +21,8 @@ public class IndexMetadata {
   String clbDatasetKey;
   @Schema(description = "The GBIF key")
   String datasetKey;
+  @Schema(description = "The dataset alias")
+  String datasetAlias;
   @Schema(description = "The dataset description")
   String datasetTitle;
   @Schema(description = "The size of the index in MB")
