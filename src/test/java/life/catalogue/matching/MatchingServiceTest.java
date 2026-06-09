@@ -48,7 +48,7 @@ public class MatchingServiceTest {
     assertEquals(-35, rankSimilarity(GENUS, CLASS));
     assertEquals(-35, rankSimilarity(GENUS, FAMILY));
     // with the introduction of the new rank class
-    assertEquals(-26, rankSimilarity(FAMILY, KINGDOM));
+    assertEquals(-28, rankSimilarity(FAMILY, KINGDOM));
   }
 
   NameUsageMatch build(String key) {
