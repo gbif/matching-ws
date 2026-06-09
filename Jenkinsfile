@@ -60,7 +60,7 @@ pipeline {
                             [configFile(fileId: 'org.jenkinsci.plugins.configfiles.maven.GlobalMavenSettingsConfig1387378707709',
                                     variable: 'MAVEN_SETTINGS_XML')]) {
                         git 'https://github.com/gbif/matching-ws.git'
-                        sh "mvn -s \$MAVEN_SETTINGS_XML -B -Denforcer.skip=true -Darguments=\"-DskipTests -DskipITs\" release:prepare release:perform -Dtag=v${params.RELEASE_VERSION} ${releaseArgs}"
+                        sh "mvn -s \$MAVEN_SETTINGS_XML -B -Denforcer.skip=true release:prepare release:perform ${releaseArgs}"
                     }
                 }
             }
