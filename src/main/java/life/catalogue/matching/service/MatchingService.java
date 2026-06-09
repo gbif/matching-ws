@@ -31,6 +31,7 @@ import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,6 +56,9 @@ public class MatchingService {
 
   @Value("${working.dir:/tmp/}")
   protected String metadataFilePath;
+
+  @Autowired(required = false)
+  private APIMetadata apiMetadataOverrides;
 
   private static final int MIN_CONFIDENCE = 80;
   private static final int MIN_CONFIDENCE_FOR_HIGHER_MATCHES = 90;
@@ -150,7 +154,9 @@ public class MatchingService {
     try {
       if (regenerate || !metadata.exists()) {
         APIMetadata metadata1 = datasetIndex.getAPIMetadata();
-        //serialise to file
+        // apply any configured overrides from application.yaml
+        applyAPIMetadataOverrides(metadata1);
+        // serialise to file
         ObjectMapper mapper = new ObjectMapper();
         FileWriter writer = new FileWriter(metadata);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -159,12 +165,37 @@ public class MatchingService {
       } else {
         // read from file
         ObjectMapper mapper = new ObjectMapper();
-        return Optional.of(mapper.readValue(metadata, APIMetadata.class));
+        APIMetadata m = mapper.readValue(metadata, APIMetadata.class);
+        applyAPIMetadataOverrides(m);
+        return Optional.of(m);
       }
     } catch (Exception e) {
       log.error("Failed to read index metadata from {}", metadata, e);
     }
     return Optional.empty();
+  }
+
+  /**
+   * Applies non-null values from the configured APIMetadata (application.yaml) to the generated one.
+   */
+  private void applyAPIMetadataOverrides(APIMetadata metadata) {
+    if (apiMetadataOverrides == null || metadata == null) return;
+
+    if (apiMetadataOverrides.getCreated() != null) {
+      metadata.setCreated(apiMetadataOverrides.getCreated());
+    }
+    if (apiMetadataOverrides.getBuildInfo() != null) {
+      metadata.setBuildInfo(apiMetadataOverrides.getBuildInfo());
+    }
+    if (apiMetadataOverrides.getMainIndex() != null) {
+      metadata.setMainIndex(apiMetadataOverrides.getMainIndex());
+    }
+    if (apiMetadataOverrides.getIdentifierIndexes() != null && !apiMetadataOverrides.getIdentifierIndexes().isEmpty()) {
+      metadata.setIdentifierIndexes(apiMetadataOverrides.getIdentifierIndexes());
+    }
+    if (apiMetadataOverrides.getAncillaryIndexes() != null && !apiMetadataOverrides.getAncillaryIndexes().isEmpty()) {
+      metadata.setAncillaryIndexes(apiMetadataOverrides.getAncillaryIndexes());
+    }
   }
 
   private static boolean isMatch(@Nullable NameUsageMatch match) {
