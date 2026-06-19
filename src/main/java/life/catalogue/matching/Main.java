@@ -22,6 +22,7 @@ import sun.misc.Unsafe;
 public class Main {
 
   public static final String CLB_DATASET_ID = "clb.dataset.id";
+  public static final String GBIF_DATASET_KEY = "gbif.dataset.key";
   public static final String CLB_IDENTIFIER_DATASET_IDS = "clb.identifier.dataset.ids";
   public static final String CLB_IUCN_DATASET_ID = "clb.iucn.dataset.id";
   public static final String MODE = "mode";

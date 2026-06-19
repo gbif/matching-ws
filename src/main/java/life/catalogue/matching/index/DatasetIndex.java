@@ -107,7 +107,10 @@ public class DatasetIndex {
     MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     final String mainIndexPath = getMainIndexPath();
 
-    final Map<Integer, Dataset> prefixMapping = loadPrefixMapping();
+    // loads a map of gbif datasetkey -> prefix mapping
+    // we use the gbif key as the COL dataset key changes
+    // between releases
+    final Map<String, Dataset> prefixMapping = loadPrefixMapping();
 
     if (new File(mainIndexPath).exists()) {
       log.info("Loading lucene index from {} ....", mainIndexPath);
@@ -119,7 +122,7 @@ public class DatasetIndex {
         log.warn("Cannot open lucene index. Index not available", e);
       }
       log.info("Loaded lucene index from {}", mainIndexPath);
-      this.coreDataset = initialiseCoreIndexDataset(MAIN_INDEX_DIR, prefixMapping);
+      this.coreDataset = initialiseCoreIndexDataset(prefixMapping);
 
       // load identifier indexes
       log.debug("Loading identifier indexes from {}", IDENTIFIERS_DIR);
@@ -152,14 +155,14 @@ public class DatasetIndex {
     }
   }
 
-  private Dataset initialiseCoreIndexDataset(String mainIndexPath, Map<Integer, Dataset> prefixMapping) {
+  private Dataset initialiseCoreIndexDataset(Map<String, Dataset> prefixMapping) {
 
     try {
       ObjectMapper mapper = new ObjectMapper();
-      Dataset dataset = mapper.readValue(new FileReader(indexPath + "/"  + mainIndexPath + "/" + METADATA_JSON), Dataset.class);
+      Dataset dataset = mapper.readValue(new FileReader(indexPath + "/"  + life.catalogue.matching.util.IndexConstants.MAIN_INDEX_DIR + "/" + METADATA_JSON), Dataset.class);
 
       // apply prefix mapping
-      Dataset prefixDatasetConfig = prefixMapping.get(dataset.getClbKey());
+      Dataset prefixDatasetConfig = prefixMapping.get(dataset.getDatasetKey());
       if (prefixDatasetConfig != null) {
         dataset.setIndexedPrefix(prefixDatasetConfig.getIndexedPrefix());
         dataset.setRecognisedPrefixes(prefixDatasetConfig.getRecognisedPrefixes());
@@ -173,8 +176,7 @@ public class DatasetIndex {
     }
   }
 
-
-  private HashMap<Dataset, IndexSearcher> initialiseAdditionalIndexes(String directoryName, Map<Integer, Dataset> prefixMapping) {
+  private HashMap<Dataset, IndexSearcher> initialiseAdditionalIndexes(String directoryName, Map<String, Dataset> prefixMapping) {
     HashMap<Dataset, IndexSearcher> searchers = new HashMap<>();
     if (Path.of(indexPath + "/" + directoryName).toFile().exists()) {
       try (DirectoryStream<Path> stream = Files.newDirectoryStream(Path.of(indexPath + "/" + directoryName))) {
@@ -188,7 +190,7 @@ public class DatasetIndex {
                 Dataset.class);
 
               // apply prefix mapping
-              Dataset prefixDatasetConfig = prefixMapping.get(dataset.getClbKey());
+              Dataset prefixDatasetConfig = prefixMapping.get(dataset.getDatasetKey());
               if (prefixDatasetConfig != null) {
                 dataset.setIndexedPrefix(prefixDatasetConfig.getIndexedPrefix());
                 dataset.setRecognisedPrefixes(prefixDatasetConfig.getRecognisedPrefixes());
@@ -213,7 +215,7 @@ public class DatasetIndex {
     return searchers;
   }
 
-  private Map<Integer, Dataset> loadPrefixMapping() {
+  private Map<String, Dataset> loadPrefixMapping() {
     ClassLoader classLoader = Main.class.getClassLoader();
 
     try (InputStream inputStream = classLoader.getResourceAsStream(DATASETS_YAML)) {
@@ -228,7 +230,7 @@ public class DatasetIndex {
 
       return datasets.stream()
         .peek(dataset -> log.debug("Loaded dataset {} [{}]", dataset.getTitle(), dataset.getClbKey()))
-        .collect(Collectors.toMap(Dataset::getClbKey, dataset -> dataset));
+        .collect(Collectors.toMap(Dataset::getDatasetKey, dataset -> dataset));
     } catch (IOException e) {
       log.warn("Cannot read dataset prefix mapping file", e);
       return Map.of();
@@ -700,7 +702,6 @@ public class DatasetIndex {
    */
   public NameUsageMatch matchByExternalKey(String suppliedKey, MatchingIssue notFoundIssue, MatchingIssue ignoredIssue) {
 
-    //
     if (coreDataset.getRecognisedPrefixes() != null && !coreDataset.getRecognisedPrefixes().isEmpty()) {
       if (hasRecognisedPrefix(suppliedKey, coreDataset)) {
 
