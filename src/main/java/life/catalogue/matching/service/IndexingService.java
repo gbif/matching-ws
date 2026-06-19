@@ -144,13 +144,18 @@ public class IndexingService {
    * @param datasetKeyInput a dataset key or a release key
    * @return the dataset or empty if not found
    */
-  private Optional<Dataset> lookupDataset(SqlSessionFactory factory, String datasetKeyInput) {
+  private Optional<Dataset> lookupDataset(SqlSessionFactory factory, String datasetKeyInput, String gbifDatasetKeyInput) {
 
     // resolve the magic keys...
     Optional<Integer> datasetKey = Optional.empty();
     try {
       datasetKey = Optional.of(Integer.parseInt(datasetKeyInput));
-      return lookupDataset(factory, datasetKey.get());
+      Optional<Dataset> dataset = lookupDataset(factory, datasetKey.get());
+      // override the datasetkey if supplied
+      if (dataset.isPresent() && StringUtils.isNotBlank(gbifDatasetKeyInput)) {
+        dataset.get().setDatasetKey(gbifDatasetKeyInput);
+      }
+      return dataset;
     } catch (NumberFormatException ignored) {
     }
 
@@ -159,8 +164,13 @@ public class IndexingService {
       Matcher m = REL_PATTERN.matcher(datasetKeyInput);
       if (m.find()){
         Integer releaseDatasetKey = releaseKeyFromMatch(factory, m);
-        return lookupDataset(factory, releaseDatasetKey);
 
+        Optional<Dataset> dataset = lookupDataset(factory,releaseDatasetKey);
+        // override the datasetkey if supplied
+        if (dataset.isPresent() && StringUtils.isNotBlank(gbifDatasetKeyInput)) {
+          dataset.get().setDatasetKey(gbifDatasetKeyInput);
+        }
+        return dataset;
       }
     }
     return Optional.empty();
@@ -213,7 +223,7 @@ public class IndexingService {
   private Optional<Dataset> lookupDataset(SqlSessionFactory factory, Integer key) throws NotFoundException {
     try (SqlSession session = factory.openSession()) {
       DatasetMapper dm = session.getMapper(DatasetMapper.class);
-      return  dm.getDataset(key);
+      return dm.getDataset(key);
     }
   }
 
@@ -225,6 +235,17 @@ public class IndexingService {
    */
   @Transactional
   public void writeCLBToFile(@NotNull final String datasetKeyInput) throws Exception {
+    writeCLBToFile(datasetKeyInput, null);
+  }
+
+  /**
+   * Writes an export of the name usages in a checklist bank dataset to a CSV file.
+   *
+   * @param datasetKeyInput a dataset key or a release key
+   * @throws Exception if the dataset key is invalid or the export fails
+   */
+  @Transactional
+  public void writeCLBToFile(@NotNull final String datasetKeyInput, final String gbifDatasetKeyInput) throws Exception {
 
     final String directory = exportPath + "/" + datasetKeyInput;
     final String fileName = directory + "/" + INDEX_CSV;
@@ -238,7 +259,7 @@ public class IndexingService {
     try (HikariDataSource dataSource = getDataSource()) {
       final SqlSessionFactory factory = getSqlSessionFactory(dataSource);
       // resolve the magic keys...
-      Optional<Dataset> dataset = lookupDataset(factory, datasetKeyInput);
+      Optional<Dataset> dataset = lookupDataset(factory, datasetKeyInput, gbifDatasetKeyInput);
       if (dataset.isEmpty()) {
         throw new IllegalArgumentException("Invalid dataset key: " + datasetKeyInput);
       }
@@ -401,7 +422,7 @@ public class IndexingService {
       final SqlSessionFactory factory = getSqlSessionFactory(dataSource);
 
       // resolve the magic keys...
-      Optional<Dataset> dataset = lookupDataset(factory, datasetKeyInput);
+      Optional<Dataset> dataset = lookupDataset(factory, datasetKeyInput, null);
       if (dataset.isEmpty()) {
         throw new IllegalArgumentException("Invalid dataset key: " + datasetKeyInput);
       }
@@ -876,7 +897,7 @@ public class IndexingService {
   }
 
   @Transactional
-  public void createMainIndex(String datasetKey) throws Exception {
+  public void createMainIndex(String datasetKey, String gbifDatasetKey) throws Exception {
     final String mainIndexPath = indexPath + "/" + MAIN_INDEX_DIR;
     final String tempDenormedPath = indexPath + "/denormed";
     if (indexExists(mainIndexPath)){
@@ -884,7 +905,7 @@ public class IndexingService {
       return;
     }
     log.info("Generating index for path {}", mainIndexPath);
-    writeCLBToFile(datasetKey);
+    writeCLBToFile(datasetKey, gbifDatasetKey);
     indexFile(exportPath + "/" + datasetKey, mainIndexPath);
     denormalizeMainIndex(mainIndexPath, tempDenormedPath);
   }

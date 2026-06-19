@@ -49,6 +49,7 @@ public class MatchingApplication implements ApplicationRunner {
   @Value("${licence.url: https://github.com/CatalogueOfLife/backend/blob/master/LICENSE}") String licenceUrl;
   @Value("${mode:INDEX_AND_RUN}") String configuredMode;
   @Value("${clb.dataset.id: }") String configuredDatasetId;
+  @Value("${gbif.dataset.key: }") String configuredGbifDatasetKey;
   @Value("${clb.identifier.dataset.ids: }") List<String> configuredIdentifierDatasetIds;
   @Value("${clb.iucn.dataset.id: }") String configuredIucnDatasetId;
   @Value("${index.path:/tmp/matching-index}") String indexPath;
@@ -118,11 +119,12 @@ public class MatchingApplication implements ApplicationRunner {
 
     // get dataset IDs, allowing for command line overrides
     final String datasetId = getMainDatasetId(args);
+    final String gbifDatasetKey = getMainGbifDatasetKey(args);
     final String iucnDatasetId = getIucnDatasetId(args);
     final List<String> identifierDatasetIds = getIdentifierDatasetIds(args);
 
     // build the main index
-    indexingService.createMainIndex(datasetId);
+    indexingService.createMainIndex(datasetId, gbifDatasetKey);
 
     // reinitialise dataset index for the new index
     datasetIndex.reinit();
@@ -155,6 +157,14 @@ public class MatchingApplication implements ApplicationRunner {
       datasetId = args.getOptionValues(Main.CLB_DATASET_ID).get(0);
     }
     return datasetId;
+  }
+
+  private String getMainGbifDatasetKey(ApplicationArguments args) {
+    String datasetKey = configuredGbifDatasetKey;
+    if (args.getOptionValues(GBIF_DATASET_KEY) != null && !args.getOptionValues(Main.GBIF_DATASET_KEY).isEmpty()) {
+      datasetKey = args.getOptionValues(Main.GBIF_DATASET_KEY).get(0);
+    }
+    return datasetKey;
   }
 
   private String getIucnDatasetId(ApplicationArguments args) {

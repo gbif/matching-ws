@@ -1,3 +1,15 @@
+# Recognise ids of the form col:N = Animalia, strip the prefix for matching.
+- title: "Catalogue of Life"
+  alias: "COLXR"
+  clbKey: "-1"
+  datasetKey: "7ddf754f-d193-4cc9-b351-99906754a03b"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "col:"
+    - "colxr:"
+  prefixToAddToOutput: ""
+  removePrefixForMatching: true
+
 # Recognise ids of the form gbif:1 = Animalia, strip the prefix for matching.
 - title: "GBIF Backbone Taxonomy"
   alias: "GBIF"
