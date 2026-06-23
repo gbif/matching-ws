@@ -1006,6 +1006,23 @@ public class IndexingService {
     return right;
   }
 
+  /**
+   * Best-effort directory size for diagnostic logging only. A live Lucene index
+   * directory has segment files deleted by background merges while we walk it, so
+   * tolerate files that vanish mid-walk (or a missing dir) instead of failing the build.
+   *
+   * @param dir the directory to size
+   * @return the directory size in bytes, or -1 if it could not be determined
+   */
+  private static long sizeOfDirectoryQuietly(File dir) {
+    try {
+      return FileUtils.sizeOfDirectory(dir);
+    } catch (RuntimeException e) { // UncheckedIOException (file removed mid-walk) / IllegalArgumentException
+      log.warn("Could not determine size of {} (index files changing concurrently): {}", dir, e.toString());
+      return -1L;
+    }
+  }
+
   private void denormalizeMainIndex(String mainIndexPath, String denormedTempPath) throws IOException {
     //generate nested set index
     nestedSetMainIndex(indexPath + "/" + MAIN_INDEX_DIR, indexPath + "/nested");
@@ -1072,10 +1089,10 @@ public class IndexingService {
     mainDirectory.close();
 
     // optimize the index
-    log.info("Disk size before optimisation: {}", FileUtils.sizeOfDirectory(new File(denormedTempPath)));
+    log.info("Disk size before optimisation: {}", sizeOfDirectoryQuietly(new File(denormedTempPath)));
     finishIndex(denormIndexWriter);
     denormIndexWriter.commit();
-    log.info("Disk size after optimisation: {}", FileUtils.sizeOfDirectory(new File(denormedTempPath)));
+    log.info("Disk size after optimisation: {}", sizeOfDirectoryQuietly(new File(denormedTempPath)));
 
     // remove old index, and move new one into place
     FileUtils.copyFile(new File(mainIndexPath + "/" + METADATA_JSON), new File(denormedTempPath + "/" + METADATA_JSON));
