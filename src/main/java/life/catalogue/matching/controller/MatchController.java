@@ -5,7 +5,6 @@ import life.catalogue.matching.service.MatchingService;
 import org.gbif.nameparser.api.Rank;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.time.StopWatch;
 import org.springdoc.api.annotations.ParameterObject;
@@ -118,16 +117,17 @@ public class MatchController implements ErrorController {
           description = "The usage key to look up. When provided, all other fields are ignored."),
         @Parameter(name = "taxonID",
           description = "The taxonID to match. Matches to a taxonID will take precedence over " +
-            "scientificName values supplied. A comparison of the matched scientific and taxonID is performed to" +
-            "check for inconsistencies." +
+            "scientificName values supplied. A comparison of the matched scientific and taxonID is performed to " +
+            "check for inconsistencies. " +
             "See Darwin core term " +
-            "<a href='https://dwc.tdwg.org/terms/#dwc:taxonID'>taxonID</a> for more details.",
+            "<a href='https://dwc.tdwg.org/terms/#dwc:taxonID'>taxonID</a> for more details."
+            ,
           in = ParameterIn.QUERY, schema = @Schema(implementation = String.class)),
         @Parameter(name = "taxonConceptID",
           description = "The taxonConceptID to match. " +
             "Matches to a taxonConceptID will take precedence over " +
             "scientificName values supplied. A comparison of the matched scientific and taxonConceptID is performed to " +
-            "check for inconsistencies." +
+            "check for inconsistencies. " +
             "See Darwin core term " +
             "<a href='https://dwc.tdwg.org/terms/#dwc:taxonConceptID'>taxonConceptID</a> for more details.",
           in = ParameterIn.QUERY, schema = @Schema(implementation = String.class)),
@@ -135,7 +135,7 @@ public class MatchController implements ErrorController {
           description = "The scientificNameID to match. " +
             "Matches to a scientificNameID will take precedence over " +
             "scientificName values supplied. A comparison of the matched scientific and scientificNameID is performed to " +
-            "check for inconsistencies." +
+            "check for inconsistencies. " +
             "See Darwin core term " +
             "<a href='https://dwc.tdwg.org/terms/#dwc:scientificNameID'>scientificNameID</a> for more details",
           in = ParameterIn.QUERY, schema = @Schema(implementation = String.class)),
