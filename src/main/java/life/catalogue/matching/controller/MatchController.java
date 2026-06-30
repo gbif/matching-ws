@@ -120,8 +120,7 @@ public class MatchController implements ErrorController {
             "scientificName values supplied. A comparison of the matched scientific and taxonID is performed to " +
             "check for inconsistencies. " +
             "See Darwin core term " +
-            "<a href='https://dwc.tdwg.org/terms/#dwc:taxonID'>taxonID</a> for more details."
-            ,
+            "<a href='https://dwc.tdwg.org/terms/#dwc:taxonID'>taxonID</a> for more details.",
           in = ParameterIn.QUERY, schema = @Schema(implementation = String.class)),
         @Parameter(name = "taxonConceptID",
           description = "The taxonConceptID to match. " +
