@@ -89,7 +89,7 @@
   prefixToAddToOutput: ""
   removePrefixForMatching: false
   examples:
-      - "NHMSYS0000530537"
+    - "NHMSYS0000530537"
 
 - title: "Dyntaxa. Svensk taxonomisk databas"
   alias: "Dyntaxa"
