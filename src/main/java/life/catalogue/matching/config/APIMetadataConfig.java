@@ -43,7 +43,7 @@ public class APIMetadataConfig extends APIMetadata {
             ObjectMapper mapper = new ObjectMapper();
             APIMetadata apiMetadata = mapper.readValue(metadata, APIMetadata.class);
 
-            // load the
+            // load identifier prefix mapping (datasets.yaml) for example identifier strings
             Map<String, Dataset> identifiers = DatasetIndex.loadPrefixMapping();
             sb.append("<ul>");
             apiMetadata.getIdentifierIndexes().forEach(index -> {
