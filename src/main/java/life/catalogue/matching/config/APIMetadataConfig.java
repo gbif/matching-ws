@@ -87,7 +87,9 @@ public class APIMetadataConfig extends APIMetadata {
             if (path == null) return;
             var getOp = path.getGet();
             if (getOp == null) return;
-            for (Parameter p : getOp.getParameters()) {
+            var params = getOp.getParameters();
+            if (params == null) return;
+            for (Parameter p : params) {
                 if (p.getName() != null && TAXON_ID_FIELDS.contains(p.getName())) {
                     p.setDescription((p.getDescription() == null ? "" : p.getDescription())
                             + " <br/>Sources of recognised identifiers include: " + identifiersBlock);
