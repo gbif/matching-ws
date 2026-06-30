@@ -116,5 +116,5 @@
   prefixToAddToOutput: ""
   removePrefixForMatching: true
   examples:
-      - "itis:179628"
-      - "tsn:179628"
+    - "itis:179628"
+    - "tsn:179628"
