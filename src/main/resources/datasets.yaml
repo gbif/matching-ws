@@ -9,6 +9,8 @@
     - "colxr:"
   prefixToAddToOutput: ""
   removePrefixForMatching: true
+  examples:
+    - "col:N"
 
 # Recognise ids of the form gbif:1 = Animalia, strip the prefix for matching.
 - title: "GBIF Backbone Taxonomy"
@@ -18,9 +20,10 @@
   indexedPrefix: ""
   recognisedPrefixes:
     - "gbif:"
-    - "https?://www.gbif.org/species/1"
   prefixToAddToOutput: "https://www.gbif.org/species/"
   removePrefixForMatching: true
+  examples:
+    - "gbif:1"
 
 # Recognise ids of the form iucn:180593985 = Calidris ferruginea, strip the prefix for matching.
 - title: "IUCN Red List"
@@ -32,6 +35,9 @@
     - "iucn:"
   prefixToAddToOutput: ""
   removePrefixForMatching: true
+  examples:
+    - "iucn:180593985"
+    - "iucn:123456789"
 
 # Recognise the 3 configured prefixes removing all, add, "urn:lsid:ipni.org:names:" to output
 - title: "International Plant Names Index"
@@ -46,6 +52,10 @@
   # the source data doesnt include the lsid prefix, so add it to output
   prefixToAddToOutput: "urn:lsid:ipni.org:names:"
   removePrefixForMatching: true
+  examples:
+    - "urn:lsid:ipni.org:names:2006-1"
+    - "ipni:2006-1"
+    - "https://www.ipni.org/n/2006-1"
 
 # Strip the recognised prefixes for matching, but add the lsid prefix before matching
 - title: "World Register of Marine Species"
@@ -63,6 +73,9 @@
    # the source data includes the lsid prefix which is indexed
   prefixToAddToOutput: ""
   removePrefixForMatching: true
+  examples:
+    - "urn:lsid:marinespecies.org:taxname:105838"
+    - "AphiaID:105838"
 
 # Don't remove the recognised prefixes for matching, add nothing to output
 - title: "UK Species Inventory"
@@ -75,6 +88,8 @@
     - "NBNSYS"
   prefixToAddToOutput: ""
   removePrefixForMatching: false
+  examples:
+    - "NHMSYS0000530537"
 
 - title: "Dyntaxa. Svensk taxonomisk databas"
   alias: "Dyntaxa"
@@ -86,6 +101,8 @@
     - "urn:lsid:dyntaxa.se:taxon:"
   prefixToAddToOutput: ""
   removePrefixForMatching: true
+  examples:
+    - "urn:lsid:dyntaxa.se:Taxon:103038"
 
 - title: "Integrated Taxonomic Information System"
   alias: "ITIS"
@@ -98,3 +115,6 @@
     - "https://www.itis.gov/servlet/SingleRpt/SingleRpt?search_topic=TSN&search_value="
   prefixToAddToOutput: ""
   removePrefixForMatching: true
+  examples:
+    - "itis:179628"
+    - "tsn:179628"

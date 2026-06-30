@@ -30,4 +30,5 @@ public class Dataset {
   Boolean removePrefixForMatching = false;
   Long taxonCount = 0L;
   Long matchesToMainIndex = 0L;
+  List<String> examples;
 }

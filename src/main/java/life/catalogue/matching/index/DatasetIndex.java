@@ -215,7 +215,7 @@ public class DatasetIndex {
     return searchers;
   }
 
-  private Map<String, Dataset> loadPrefixMapping() {
+  public static Map<String, Dataset> loadPrefixMapping() {
     ClassLoader classLoader = Main.class.getClassLoader();
 
     try (InputStream inputStream = classLoader.getResourceAsStream(DATASETS_YAML)) {
