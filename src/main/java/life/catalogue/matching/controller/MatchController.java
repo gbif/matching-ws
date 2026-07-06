@@ -2,6 +2,7 @@ package life.catalogue.matching.controller;
 
 import life.catalogue.matching.model.*;
 import life.catalogue.matching.service.MatchingService;
+import life.catalogue.matching.service.MetadataService;
 import org.gbif.nameparser.api.Rank;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -42,12 +43,14 @@ public class MatchController implements ErrorController {
   private final MatchingService matchingService;
   private final ErrorAttributes errorAttributes;
   private static final String ERROR_PATH = "/error";
+  private final MetadataService metadataService;
 
   @Autowired
-  public MatchController(ErrorAttributes errorAttributes, MatchingService matchingService) {
+  public MatchController(ErrorAttributes errorAttributes, MatchingService matchingService, MetadataService metadataService) {
     Assert.notNull(errorAttributes, "ErrorAttributes must not be null");
     this.errorAttributes = errorAttributes;
     this.matchingService = matchingService;
+    this.metadataService = metadataService;
   }
 
   private Map<String, Object> getErrorAttributes(WebRequest request) {
@@ -89,7 +92,7 @@ public class MatchController implements ErrorController {
     value = {"v2/species/match/metadata"},
     produces = "application/json")
   public Optional<APIMetadata> metadata(){
-    return matchingService.getAPIMetadata(false);
+    return metadataService.getAPIMetadata(false);
   }
 
   @Operation(

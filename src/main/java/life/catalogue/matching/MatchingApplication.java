@@ -4,6 +4,7 @@ import life.catalogue.matching.index.DatasetIndex;
 import life.catalogue.matching.model.APIMetadata;
 import life.catalogue.matching.service.IndexingService;
 import life.catalogue.matching.service.MatchingService;
+import life.catalogue.matching.service.MetadataService;
 import life.catalogue.matching.util.NameParsers;
 
 import java.io.IOException;
@@ -43,6 +44,7 @@ public class MatchingApplication implements ApplicationRunner {
   protected final IndexingService indexingService;
   protected final MatchingService matchingService;
   protected final DatasetIndex datasetIndex;
+  private final MetadataService metadataService;
 
   @Value("${version:1.0}") String version;
   @Value("${licence.name: Apache License, Version 2.0}") String licence;
@@ -57,11 +59,12 @@ public class MatchingApplication implements ApplicationRunner {
 
   public MatchingApplication(MatchingService matchingService,
                              IndexingService indexingService,
-                             DatasetIndex datasetIndex, ApplicationContext appContext) {
+                             DatasetIndex datasetIndex, ApplicationContext appContext, MetadataService metadataService) {
     this.matchingService = matchingService;
     this.indexingService = indexingService;
     this.datasetIndex = datasetIndex;
     this.appContext = appContext;
+    this.metadataService = metadataService;
   }
 
   @Override
@@ -73,7 +76,7 @@ public class MatchingApplication implements ApplicationRunner {
     if (Main.ExecutionMode.INDEX.equals(mode) || Main.ExecutionMode.INDEX_AND_RUN.equals(mode)) {
       try {
         runIndexingIfRequired(args);
-        matchingService.getAPIMetadata(true);
+        metadataService.getAPIMetadata(true);
       } catch (Exception e) {
         log.error("Failed to run indexing", e);
         throw new RuntimeException(e);
@@ -89,7 +92,7 @@ public class MatchingApplication implements ApplicationRunner {
   }
 
   private void initialiseWebapp() {
-    Optional<APIMetadata> metadata = matchingService.getAPIMetadata(true);
+    Optional<APIMetadata> metadata = metadataService.getAPIMetadata(true);
     if (metadata.isEmpty()) {
       log.error("No main index found. Cannot start web services");
       return;
@@ -139,7 +142,7 @@ public class MatchingApplication implements ApplicationRunner {
         indexingService.indexIdentifiers(id);
     }
 
-    matchingService.getAPIMetadata(true);
+    metadataService.getAPIMetadata(true);
     log.info("Index ready for search");
   }
 
@@ -192,7 +195,7 @@ public class MatchingApplication implements ApplicationRunner {
 
   @Bean
   public OpenAPI customOpenAPI() {
-    Optional<APIMetadata> metadata = matchingService.getAPIMetadata(false);
+    Optional<APIMetadata> metadata = metadataService.getAPIMetadata(false);
     OpenAPI openAPI = new OpenAPI();
     metadata.ifPresent(m -> {
       String title = m.getMainIndex().getDatasetTitle() != null ?

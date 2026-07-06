@@ -5,6 +5,7 @@ import io.swagger.v3.oas.models.parameters.Parameter;
 import life.catalogue.matching.index.DatasetIndex;
 import life.catalogue.matching.model.APIMetadata;
 import life.catalogue.matching.model.Dataset;
+import life.catalogue.matching.service.MetadataService;
 import lombok.extern.slf4j.Slf4j;
 import org.gbif.dwc.terms.DwcTerm;
 import org.springdoc.core.customizers.OpenApiCustomiser;
@@ -35,13 +36,13 @@ public class APIMetadataConfig extends APIMetadata {
 
     private final String identifiersBlock;
 
-    public APIMetadataConfig(@Value("${working.dir:/tmp/}") String metadataFilePath ) {
+
+    public APIMetadataConfig(DatasetIndex datasetIndex) {
 
         StringBuffer sb = new StringBuffer();
         try {
-            File metadata = new File(metadataFilePath + "/index-metadata.json");
-            ObjectMapper mapper = new ObjectMapper();
-            APIMetadata apiMetadata = mapper.readValue(metadata, APIMetadata.class);
+
+            APIMetadata apiMetadata = datasetIndex.getAPIMetadata();
 
             // load identifier prefix mapping (datasets.yaml) for example identifier strings
             Map<String, Dataset> identifiers = DatasetIndex.loadPrefixMapping();
@@ -73,7 +74,7 @@ public class APIMetadataConfig extends APIMetadata {
             });
             sb.append("</ul>");
         } catch (Exception e) {
-            log.error("Failed to read metadata file from " + metadataFilePath, e);
+            log.error("Failed to read metadata file from " + datasetIndex, e);
         }
         this.identifiersBlock = sb.toString();
     }
