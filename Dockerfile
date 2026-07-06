@@ -59,6 +59,7 @@ RUN if [ -n "$CLB_DATASET_ID" ]; then \
         --spring.cloud.bootstrap.location=/app/backend/matching-ws/src/main/resources/bootstrap.yml \
         --mode=INDEX \
         --server.port=0 \
+        --working.dir=/opt/gbif/$APP_ARTIFACT/ \
         --index.path=/data/$APP_ARTIFACT/index \
         --export.path=/data/$APP_ARTIFACT/exports \
         --clb.dataset.id=$CLB_DATASET_ID \
