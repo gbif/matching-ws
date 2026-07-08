@@ -118,3 +118,15 @@
   examples:
     - "itis:179628"
     - "tsn:179628"
+
+- title: "Wikidata"
+  alias: "wikidata"
+  clbKey: "314569"
+  datasetKey: "ac5f72cf-172d-4eb4-ad8c-db66ea1c78e5"
+  indexedPrefix: ""
+  recognisedPrefixes:
+    - "Q"
+  prefixToAddToOutput: ""
+  removePrefixForMatching: false
+  examples:
+    - "Q106976267"    
