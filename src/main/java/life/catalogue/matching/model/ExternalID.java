@@ -40,6 +40,6 @@ public class ExternalID {
     private String rank;
     @Schema(description = "The status of the external identifier")
     private String status;
-    @Schema(description = "Recognised variants of this ID")
-    private List<String> recognisedVariants;
+    @Schema(description = "Recognized variants of this ID")
+    private List<String> recognizedVariants;
 }

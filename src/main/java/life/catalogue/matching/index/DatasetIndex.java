@@ -687,7 +687,7 @@ public class DatasetIndex {
       .parentID(doc.get(FIELD_PARENT_ID))
       .status(doc.get(FIELD_STATUS))
       .mainIndexID(doc.get(FIELD_JOIN_ID))
-      .recognisedVariants(dataset.getRecognisedPrefixes()
+      .recognizedVariants(dataset.getRecognisedPrefixes()
               .stream().map(variant -> variant + cleanID).collect(Collectors.toList())
       )
       .build();
