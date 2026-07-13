@@ -1277,7 +1277,11 @@ public class IndexingService {
     // If the name is a synonym, then parentId name usage points
     // to the accepted name
     if (StringUtils.isNotBlank(nameUsage.getStatus())
-        && nameUsage.getStatus().equals(TaxonomicStatus.SYNONYM.name())
+        && (
+                nameUsage.getStatus().equals(TaxonomicStatus.SYNONYM.name())
+                || nameUsage.getStatus().equals(TaxonomicStatus.AMBIGUOUS_SYNONYM.name())
+                || nameUsage.getStatus().equals(TaxonomicStatus.MISAPPLIED.name())
+        )
         && nameUsage.getParentId() != null) {
       doc.add(new StringField(FIELD_ACCEPTED_ID, nameUsage.getParentId(), Field.Store.YES));
     }
