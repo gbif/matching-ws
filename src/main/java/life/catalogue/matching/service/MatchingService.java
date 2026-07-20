@@ -647,7 +647,6 @@ public class MatchingService {
     // if finally we cant find anything, return empty match object - but not null!
     log.debug("No match for name {}", scientificName);
     return noMatch(
-        100,
         match1.getDiagnostics().getIssues(),
         match1.getDiagnostics().getNote(),
         verbose ? match1.getDiagnostics().getAlternatives() : null);
@@ -874,7 +873,7 @@ public class MatchingService {
       final boolean verbose) {
 
     if (Strings.isNullOrEmpty(canonicalName)) {
-      return noMatch(100, ProcessFlag.NO_NAME_SUPPLIED, "No name given", null);
+      return noMatch(ProcessFlag.NO_NAME_SUPPLIED, "No name given", null);
     }
 
     // do the matching
@@ -965,7 +964,6 @@ public class MatchingService {
             best = matchLowestDenominator(canonicalName, suitableMatches);
             if (!isMatch(best)) {
               return noMatch(
-                  99,
                 ProcessFlag.MULTIPLE_MATCHES_SAME_CONFIDENCE,
                   "Multiple equal matches for " + canonicalName,
                   verbose ? matches : null);
@@ -986,7 +984,6 @@ public class MatchingService {
       if (best.getDiagnostics().getConfidence()
           < (mode == MatchingMode.HIGHER ? MIN_CONFIDENCE_FOR_HIGHER_MATCHES : MIN_CONFIDENCE)) {
         return noMatch(
-            99,
           ProcessFlag.LOW_CONFIDENCE,
             "No match because of too little confidence",
             verbose ? matches : null);
@@ -1005,7 +1002,7 @@ public class MatchingService {
       return best;
     }
 
-    return noMatch(100, ProcessFlag.NO_MATCH, null, null);
+    return noMatch(ProcessFlag.NO_MATCH, null, null);
   }
 
   /**
@@ -1062,7 +1059,6 @@ public class MatchingService {
       }
     }
     return noMatch(
-        99,
       ProcessFlag.NO_LOWEST_DENOMINATOR,
         "No lowest denominator in equal matches for " + canonicalName,
         null);
@@ -1165,17 +1161,17 @@ public class MatchingService {
     }
   }
 
+  /**
+   * Nothing matched, so no confidence is reported: there is no match to be confident about. See
+   * https://github.com/gbif/matching-ws/issues/13
+   */
   private static NameUsageMatch noMatch(
-      int confidence,
-      @NotNull ProcessFlag issue,
-      String note,
-      List<NameUsageMatch> alternatives) {
+      @NotNull ProcessFlag issue, String note, List<NameUsageMatch> alternatives) {
 
     return NameUsageMatch.builder()
         .diagnostics(
             NameUsageMatch.Diagnostics.builder()
                 .matchType(MatchType.NONE)
-                .confidence(confidence)
                 .issues(new ArrayList<>())
                 .processingFlags(new ArrayList<>(List.of(issue)))
                 .note(note)
@@ -1185,7 +1181,6 @@ public class MatchingService {
   }
 
   private static NameUsageMatch noMatch(
-    int confidence,
     @NotNull List<MatchingIssue> issues,
     String note,
     List<NameUsageMatch> alternatives) {
@@ -1193,7 +1188,6 @@ public class MatchingService {
       .diagnostics(
         NameUsageMatch.Diagnostics.builder()
           .matchType(MatchType.NONE)
-          .confidence(confidence)
           .issues(issues)
           .note(note)
           .alternatives(alternatives)

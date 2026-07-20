@@ -92,10 +92,10 @@ public class DatasetIndex {
     return isInitialised;
   }
 
+  /** No confidence is reported: nothing matched, so there is no match to be confident about. */
   final static NameUsageMatch NO_MATCH = NameUsageMatch.builder()
     .diagnostics(
       NameUsageMatch.Diagnostics.builder()
-        .confidence(100)
         .matchType(MatchType.NONE)
         .build())
     .build();

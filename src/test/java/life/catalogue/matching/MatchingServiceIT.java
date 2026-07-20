@@ -221,12 +221,31 @@ public class MatchingServiceIT {
 
     assertEquals(MatchType.NONE, best.getDiagnostics().getMatchType());
     assertNull(best.getUsage());
+    assertMatchConsistency(best);
+  }
+
+  /**
+   * Nothing was matched, so there is no match to report a confidence for. Reporting a high
+   * confidence for a NONE match reads as a very certain match to callers, which is the opposite of
+   * what happened.
+   *
+   * <p>See https://github.com/gbif/matching-ws/issues/13 and
+   * https://github.com/CatalogueOfLife/checklistbank/issues/253
+   */
+  @Test
+  public void testNoMatchHasNoConfidence() {
+    for (String name : List.of("Xqzwklerty Vbnmasdfgh", "Anmeplues", "BOLD:AAX3688")) {
+      NameUsageMatch m = matcher.match(name, new ClassificationQuery(), true);
+      assertEquals(MatchType.NONE, m.getDiagnostics().getMatchType(), name);
+      assertNull(m.getDiagnostics().getConfidence(), "no confidence expected for " + name);
+    }
   }
 
   static void assertMatchConsistency(NameUsageMatch match) {
-    assertNotNull(match.getDiagnostics().getConfidence());
     assertNotNull(match.getDiagnostics().getMatchType());
     if (MatchType.NONE == match.getDiagnostics().getMatchType()) {
+      // there is no match to be confident about
+      assertNull(match.getDiagnostics().getConfidence());
       assertNull(match.getUsage());
       assertNull(match.keyFor(Rank.SPECIES));
       assertNull(match.keyFor(Rank.GENUS));
@@ -245,6 +264,7 @@ public class MatchingServiceIT {
       assertNull(match.nameFor(Rank.KINGDOM));
 
     } else {
+      assertNotNull(match.getDiagnostics().getConfidence());
       assertNotNull(match.getUsage().getKey());
       assertNotNull(match.getUsage().getName());
 
@@ -1064,8 +1084,8 @@ public class MatchingServiceIT {
     cl.setSpecies("rufipes");
     String goodKey = "5230524"; // Lepidothrix iris
     String badKey = "99999999";
-    // names are ignored and a key is either found with full confidence or not found with full
-    // confidence
+    // names are ignored and a key is either found with full confidence, or not found at all in
+    // which case there is no confidence to report
     assertMatch(
         goodKey,
         "Ablabera rufipes",
@@ -1082,7 +1102,7 @@ public class MatchingServiceIT {
         cl,
         null,
         MatchType.NONE,
-        new IntRange(100, 100),
+        null, // nothing was found, so no confidence is reported
         Sets.newHashSet());
   }
 
