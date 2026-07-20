@@ -36,3 +36,5 @@ logs/
 
 # local spring profiles
 application-*.yml
+# maven surefire temp files
+.surefire-*
