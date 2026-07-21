@@ -225,6 +225,28 @@ public class MatchingServiceIT {
   }
 
   /**
+   * A single character dropped from an epithet shifts its remaining letters along. That used to
+   * decide whether the epithet was scored at all, so whether a typo matched depended only on where
+   * in the word it fell. Here "rufi" and "ruip" differ by 2 edits while the whole epithet differs
+   * by 1.
+   *
+   * <p>Needs the fix from CatalogueOfLife/backend#1553, i.e. col.version >= 1.3.0.
+   *
+   * <p>See https://github.com/gbif/matching-ws/issues/13
+   */
+  @Test
+  public void testSingleCharacterEpithetTypoMatches() {
+    ClassificationQuery cl = new ClassificationQuery();
+    NameUsageMatch correct = matcher.match("Ablabera rufipes", cl, false);
+    assertEquals(MatchType.EXACT, correct.getDiagnostics().getMatchType());
+
+    NameUsageMatch typo = matcher.match("Ablabera ruipes", cl, false);
+    assertNotSame(MatchType.NONE, typo.getDiagnostics().getMatchType());
+    assertNotNull(typo.getUsage());
+    assertEquals(correct.getUsage().getKey(), typo.getUsage().getKey());
+  }
+
+  /**
    * Nothing was matched, so there is no match to report a confidence for. Reporting a high
    * confidence for a NONE match reads as a very certain match to callers, which is the opposite of
    * what happened.
