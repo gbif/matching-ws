@@ -11,10 +11,34 @@ with the main matching API of [ChecklistBank](https://www.checklistbank.org).
 
 The matching index and web services depend on:
 
-* Java 21
+* Java 25
 * Maven 3.x
 * Lucene 9.x
 * Spring Boot 3.x
+* [name-parser](https://github.com/gbif/name-parser) 5.x, via the
+  [name-parser-rust](https://github.com/gbif/name-parser-rust) binding
+
+Java 25 is a hard floor, for two independent reasons: the ChecklistBank artifacts we consume are
+compiled for Java 25 (class file 69), and the name parser calls a native library over FFM
+(`java.lang.foreign`), which is only final from Java 22.
+
+### The name parser is native
+
+Since name-parser 5.0.0 there is no pure-Java parser left. `name-parser-rust` downcalls a Rust
+`cdylib` in-process over FFM, which has two consequences for anyone building or deploying this:
+
+* **Pass `--enable-native-access=ALL-UNNAMED`** to every JVM that runs this code, as the examples
+  below do. Without it the JVM warns on each restricted downcall, and a future release will refuse
+  it outright.
+* **Use a glibc base image, not alpine.** The library ships as one classifier JAR per platform
+  (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, ...), and those builds link against
+  `libc.so.6`. There is no musl build, so on alpine the JVM fails with
+  `IllegalArgumentException: Cannot open library: /tmp/nameparser_ffi….so` the first time a name is
+  parsed. All Dockerfiles here are on glibc bases for this reason.
+
+The `pom.xml` bundles both linux classifier JARs into the executable jar, so a single build works in
+both the `linux/amd64` and the `linux/arm64` image — the right library is picked from `os.arch` at
+runtime. A profile adds the build host's own classifier on macOS.
 
 ## Generating an index
 
@@ -25,21 +49,21 @@ However, the index can also be generated from a CSV file with the following colu
 * `parentID` - an identifier for the parent name usage
 * `scientificName` - the canonical scientific name, without authorship
 * `authorship` - the authorship for this name usage
-* `rank` - the taxonomic rank e.g. GENUS. See the [Rank](https://github.com/gbif/name-parser/blob/master/name-parser-api/src/main/java/org/gbif/nameparser/api/Rank.java) enumeration for a list of recognised values.
-* `status` - the taxonomic status of the usage e.g. ACCEPTED, SYNONYM. See the [TaxonomicStatus](../api/src/main/java/life/catalogue/api/vocab/TaxonomicStatus.java) enumeration for a list of recognised values.
-* `code` - the nomenclatural code for this usage e.g. ZOOLOGICAL. See the [NomCode](https://github.com/gbif/name-parser/blob/master/name-parser-api/src/main/java/org/gbif/nameparser/api/NomCode.java) enumeration for a list of recognised values.
+* `rank` - the taxonomic rank e.g. GENUS. See the [Rank](https://github.com/gbif/name-parser/blob/master/src/main/java/org/gbif/nameparser/api/Rank.java) enumeration for a list of recognised values.
+* `status` - the taxonomic status of the usage e.g. ACCEPTED, SYNONYM. See the [TaxonomicStatus](https://github.com/CatalogueOfLife/backend/blob/master/vocab/src/main/java/life/catalogue/api/vocab/TaxonomicStatus.java) enumeration for a list of recognised values.
+* `code` - the nomenclatural code for this usage e.g. ZOOLOGICAL. See the [NomCode](https://github.com/gbif/name-parser/blob/master/src/main/java/org/gbif/nameparser/api/NomCode.java) enumeration for a list of recognised values.
 * `genericName` - the generic name for this usage
 * `specificEpithet` - the specific epithet for this usage
 * `infraspecificEpithet` - the infraspecific epithet for this usage
 * `infragenericEpithet` - the infrageneric epithet for this usage
-* `type` - the type for this usage, e.g. SCIENTIFIC
+* `type` - the type for this usage, e.g. SCIENTIFIC. See the [NameType](https://github.com/gbif/name-parser/blob/master/src/main/java/org/gbif/nameparser/api/NameType.java) enumeration for a list of recognised values. Note name-parser 5.0.0 reworked these: `OTU` became `IDENTIFIER`, `HYBRID_FORMULA` became `FORMULA`, and `VIRUS` and `NO_NAME` were folded into `OTHER`.
 
 ### Generating an index from ChecklistBank database
 
 To generate an index by connecting to an instance of the ChecklistBank database:
 
 ```bash
-java -jar matching-ws.jar \ 
+java --enable-native-access=ALL-UNNAMED -jar matching-ws.jar \ 
   --mode=BUILD_INDEX \
   --clb.dataset.id=3LXRC \
   --clb.dataset.username=***** \  
@@ -53,7 +77,7 @@ java -jar matching-ws.jar \
 To generate an index from a CSV of name usages:
 
 ```bash
-java -jar matching-ws.jar \ 
+java --enable-native-access=ALL-UNNAMED -jar matching-ws.jar \ 
   --mode=INDEX_CSV \
   --index.path=/data/matching-ws/index \
   --export.path=/data/matching-ws/export/
@@ -63,12 +87,15 @@ for this index.
 
 ## Building this library as an executable Jar file
 
-The matching index and web services are implemented in Java 21, using Spring Boot 3.x.
+The matching index and web services are implemented in Java 25, using Spring Boot 3.x.
 An executable jar file can be generated by running the following command:
 
 ```bash
 mvn clean install spring-boot:repackage
 ```
+
+The resulting jar carries the native parser libraries for both linux architectures plus the build
+host's own, so it can be run locally and shipped in a linux image without rebuilding.
 
 ## Building docker images
 
@@ -225,6 +252,7 @@ the following command can be used:
 
 ```bash
 java \
+--enable-native-access=ALL-UNNAMED \
 -Dlogging.config=file:///opt/gbif/services/matching-ws/logback.xml \
 -jar matching-ws-1.0-SNAPSHOT-exec.jar \
 --spring.config.location=/opt/gbif/services/matching-ws/application.yml 
