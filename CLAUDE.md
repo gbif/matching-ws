@@ -26,17 +26,33 @@ mvn spotless:apply
 
 ## Running the service
 
+Always pass `--enable-native-access=ALL-UNNAMED`: the name parser is `name-parser-rust`, which
+downcalls a Rust cdylib over FFM (`java.lang.foreign`). Without the flag the JVM warns on every
+run, and a future JDK will refuse the call outright.
+
 ```bash
 # Run with an existing index
-java -jar target/matching-ws-*-exec.jar --mode=RUN --index.path=/tmp/index
+java --enable-native-access=ALL-UNNAMED -jar target/matching-ws-*-exec.jar --mode=RUN --index.path=/tmp/index
 
 # Build index from CSV then serve
-java -jar target/matching-ws-*-exec.jar --mode=INDEX_CSV --index.path=/tmp/index --export.path=/tmp/export/
+java --enable-native-access=ALL-UNNAMED -jar target/matching-ws-*-exec.jar --mode=INDEX_CSV --index.path=/tmp/index --export.path=/tmp/export/
 
 # Build index from ChecklistBank DB then serve
-java -jar target/matching-ws-*-exec.jar --mode=INDEX_AND_RUN \
+java --enable-native-access=ALL-UNNAMED -jar target/matching-ws-*-exec.jar --mode=INDEX_AND_RUN \
   --clb.dataset.id=3LXRC --clb.user=*** --clb.password=*** --index.path=/tmp/index
 ```
+
+### Name parsing
+
+`life.catalogue.matching.util.NameParsers` wraps the shared parser. Since name-parser 5.0.0 there is
+no pure-Java implementation, no parser cache/timeout and no `ParserConfig` to load from
+ChecklistBank. `parse()` returns a `ParseResult` — `Parsed`, `Informal` or `Unparsable` — instead of
+throwing; use `NameParsers.parseOrNull(..)` when you just want a `ParsedName` or null.
+
+The cdylib ships in per-platform classifier JARs (`native/<os.detected.classifier>/`). The pom pins
+`linux-x86_64` + `linux-aarch_64` so one `-exec.jar` works in both docker images, and a mac profile
+adds the build host's own. **The libs are glibc-linked and there is no musl build**, so every image
+here has to stay on a glibc base — an alpine base fails at `dlopen`.
 
 ## Architecture
 

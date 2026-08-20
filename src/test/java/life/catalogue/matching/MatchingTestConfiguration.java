@@ -26,9 +26,8 @@ import life.catalogue.matching.util.IOUtils;
 import life.catalogue.matching.util.NameParsers;
 
 import org.gbif.nameparser.api.NameParser;
-import org.gbif.nameparser.api.NameType;
+import org.gbif.nameparser.api.NomCode;
 import org.gbif.nameparser.api.Rank;
-import org.gbif.nameparser.api.UnparsableNameException;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -459,16 +458,9 @@ public class MatchingTestConfiguration {
   }
 
   public static boolean isViralName(String name) {
-    try {
-      NameParsers.INSTANCE.parse(name, null);
-    } catch (UnparsableNameException e) {
-      if (NameType.VIRUS == e.getType()) {
-        return true;
-      }
-    } catch (InterruptedException e) {
-      // swallow
-    }
-    return false;
+    // name-parser 5.0.0 dropped NameType.VIRUS: viral names are now flagged by their nomenclatural
+    // code, whether they were rejected as OTHER or parsed as a clean viral binomial
+    return NomCode.VIRUS == NameParsers.parse(name, null, null).code();
   }
 
   public static void addIfNotPresent(Map<String, NameUsage> usages, NameUsage usage) {

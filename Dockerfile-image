@@ -1,4 +1,6 @@
-FROM eclipse-temurin:25-jre-alpine
+# glibc, not alpine: name-parser-rust ships a cdylib linked against libc.so.6 and there is no musl
+# classifier, so dlopen of the x86_64 lib fails outright on an alpine base
+FROM eclipse-temurin:25-jre
 
 # this directory should contain a pre-built jar + config, and the generated lucene index
 ARG INDEX_BUILD_PATH=./index-build
@@ -18,11 +20,13 @@ ENV SERVICE_BASE_URL="http://localhost:8080"
 ENV ZK_SERVER_PORT=8080
 ENV ZK_TIMESTAMP=-1
 
-# Directories and perms
-RUN mkdir -p /data/$APP_ARTIFACT && \
+# Directories and perms.
+# The ubuntu base ships a stock "ubuntu" account on 1000:1000, so free that up before claiming it.
+RUN userdel -r ubuntu 2>/dev/null || true; \
+    mkdir -p /data/$APP_ARTIFACT && \
     mkdir -p /usr/local/gbif/ && \
-    addgroup -g 1000 $USER && \
-    adduser -G $USER -u 1000 -D $USER && \
+    groupadd -r $USER -g 1000 && \
+    useradd -r -g $USER -u 1000 -m $USER && \
     chown -R $USER:$USER /data/$APP_ARTIFACT && \
     chown -R $USER:$USER /usr/local/gbif/
 
@@ -39,6 +43,7 @@ EXPOSE $SERVER_PORT $SERVER_ADMIN_PORT
 USER $USER
 
 CMD java $JVM_OPTIONS \
+    --enable-native-access=ALL-UNNAMED \
     --add-opens=java.base/java.lang=ALL-UNNAMED \
     --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
     --add-opens=java.base/java.io=ALL-UNNAMED \

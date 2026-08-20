@@ -21,7 +21,6 @@ import life.catalogue.matching.service.MatchingService;
 import life.catalogue.matching.util.Dictionaries;
 import life.catalogue.matching.util.NameParsers;
 
-import org.gbif.nameparser.api.ParsedName;
 import org.gbif.nameparser.api.Rank;
 
 import java.io.IOException;
@@ -38,7 +37,6 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 
-import static org.gbif.nameparser.api.NameType.NO_NAME;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MatchingServiceIT {
@@ -329,10 +327,8 @@ public class MatchingServiceIT {
   private static boolean isParsed(NameUsageMatch x) {
     if (x.getUsage().getName() != null) {
       try {
-        ParsedName pn =
-            NameParsers.INSTANCE.parse(x.getUsage().getName(), x.getUsage().getRank(), null);
-        return pn.getType() != NO_NAME;
-
+        // NameType.NO_NAME is gone in name-parser 5.0.0 - such input is simply unparsable now
+        return NameParsers.parseOrNull(x.getUsage().getName(), x.getUsage().getRank(), null) != null;
       } catch (Exception e) {
       }
     }

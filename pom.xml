@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.catalogueoflife</groupId>
     <artifactId>motherpom</artifactId>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
   </parent>
 
   <groupId>org.gbif</groupId>
@@ -21,7 +21,7 @@
   </scm>
 
   <properties>
-    <col.version>1.3.0</col.version>
+    <col.version>1.4.0</col.version>
     <java.version>25</java.version>
     <!-- JDK 23+ no longer runs annotation processors found on the classpath unless asked, and
          lombok is discovered that way. Without this every @Slf4j/@Getter expansion is missing. -->
@@ -199,6 +199,13 @@
         <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-api</artifactId>
+        </exclusion>
+        <!-- text-tree still declares the pure-Java name-parser 4.0.0 but never calls it. Left in it
+             would put a second, stale NameParser impl next to name-parser-rust, compiled against
+             the 4.x api that 5.0.0 replaced. -->
+        <exclusion>
+          <groupId>org.gbif</groupId>
+          <artifactId>name-parser</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -558,19 +565,33 @@
       <groupId>org.gbif</groupId>
       <artifactId>name-parser-api</artifactId>
     </dependency>
+    <!--
+      name-parser 5.0.0 dropped the pure-Java implementation; org.gbif.nameparser:name-parser-rust
+      is the only NameParser now. It downcalls a Rust cdylib over FFM (java.lang.foreign), which is
+      why JDK 22+ (we are on 25) and the enable-native-access opt-in are required at runtime.
+
+      The artifact is a thin classes-only JAR plus one classifier JAR per platform carrying that
+      platform's cdylib under native/<os.detected.classifier>/. Ffi picks the directory from
+      os.name/os.arch at *runtime*, so bundling several is fine and only the matching one is loaded.
+      We hard-wire both linux classifiers because JenkinsfileDocker builds a single -exec.jar on the
+      x86_64 build agent and ships it in both the linux/amd64 and the linux/arm64 image; resolving
+      only ${os.detected.classifier} would leave the arm64 image without a cdylib.
+    -->
     <dependency>
-      <groupId>org.gbif</groupId>
-      <artifactId>name-parser</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>jul-to-slf4j</artifactId>
-        </exclusion>
-      </exclusions>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+      <version>${name-parser-rust.version}</version>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+      <version>${name-parser-rust.version}</version>
+      <classifier>linux-aarch_64</classifier>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -622,6 +643,25 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
         <version>3.7.0</version>
+      </plugin>
+      <!--
+        Tests parse names, which downcalls into the rust parser's cdylib over FFM. Without the
+        opt-in every forked JVM warns about the restricted java.lang.foreign call, and a later JDK
+        will refuse it outright. ${java.argLine} is the motherpom's list, kept by reference.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
@@ -680,4 +720,29 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      The two linux cdylibs above cover everything we deploy. Developers build and test on macOS,
+      so add that host's classifier JAR too - ${os.detected.classifier} comes from the os-maven-plugin
+      build extension inherited from the motherpom. Guarded by a profile rather than declared
+      unconditionally because on linux it would resolve to a duplicate of one of the two above,
+      which Maven rejects as a non-unique dependency key.
+    -->
+    <profile>
+      <id>native-parser-macos</id>
+      <activation>
+        <os>
+          <family>mac</family>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>org.gbif.nameparser</groupId>
+          <artifactId>name-parser-rust</artifactId>
+          <classifier>${os.detected.classifier}</classifier>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 </project>

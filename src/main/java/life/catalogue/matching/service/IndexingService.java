@@ -14,7 +14,6 @@ import life.catalogue.matching.util.NameParsers;
 import org.gbif.nameparser.api.NomCode;
 import org.gbif.nameparser.api.ParsedName;
 import org.gbif.nameparser.api.Rank;
-import org.gbif.nameparser.api.UnparsableNameException;
 import org.gbif.nameparser.util.NameFormatter;
 
 import java.io.*;
@@ -1241,16 +1240,15 @@ public class IndexingService {
     Optional<String> optCanonical = Optional.empty();
     ParsedName pn = null;
     NomCode nomCode = null;
-    try {
-      if (!StringUtils.isEmpty(nameUsage.getCode())) {
-        nomCode = NomCode.valueOf(nameUsage.getCode());
-      }
-      pn = NameParsers.INSTANCE.parse(nameUsage.getScientificName(), rank, nomCode);
+    if (!StringUtils.isEmpty(nameUsage.getCode())) {
+      nomCode = NomCode.valueOf(nameUsage.getCode());
+    }
+    pn = NameParsers.parseOrNull(nameUsage.getScientificName(), rank, nomCode);
+    if (pn != null) {
       // canonicalMinimal will construct the name without the hybrid marker and authorship
       String canonical = NameFormatter.canonicalMinimal(pn);
       optCanonical = Optional.ofNullable(canonical);
-    } catch (UnparsableNameException | InterruptedException e) {
-      // do nothing
+    } else {
       log.debug("Unable to parse name to create canonical: {}", nameUsage.getScientificName());
     }
 

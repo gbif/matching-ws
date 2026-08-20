@@ -39,6 +39,7 @@ pipeline {
                         usernamePassword(credentialsId: 'col', usernameVariable: 'CLB_USER', passwordVariable: 'CLB_PASSWORD')]) {
                 sh  "rm -Rf ${env.WORKSPACE}/index-build"
                 sh  "java $JVM_OPTIONS \
+                     --enable-native-access=ALL-UNNAMED \
                      --add-opens=java.base/java.lang=ALL-UNNAMED \
                      --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
                      --add-opens=java.base/java.io=ALL-UNNAMED \
