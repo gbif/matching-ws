@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -58,13 +59,17 @@ public class MatchingTestConfiguration {
 
   private static final Logger LOG = LoggerFactory.getLogger(MatchingTestConfiguration.class);
 
+  // @Primary because the component scan below also picks up the real @Service DatasetIndex, which
+  // would point at a non-existent index directory. Only matters once a test boots a Spring context.
   @Bean
+  @Primary
   public static DatasetIndex provideIndex() throws IOException {
     Directory dir = IndexingService.newMemoryIndex(loadIndexFromV1Responses(), loadIndexFromV2Responses());
     return DatasetIndex.newDatasetIndex(dir);
   }
 
   @Bean
+  @Primary
   public static HigherTaxaComparator provideSynonyms() throws IOException {
     LOG.info("Loading synonym dictionaries from classpath ...");
     HigherTaxaComparator syn = new HigherTaxaComparator(Dictionaries.createDefault());

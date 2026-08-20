@@ -39,7 +39,12 @@
     <opencsv.version>5.9</opencsv.version>
     <jcommander.version>1.82</jcommander.version>
     <slf4j.version>2.0.17</slf4j.version>
-    <jaxb.version>2.3.2</jaxb.version>
+    <!-- Jakarta EE 10, the versions Spring Boot 3.5 manages. These must NOT go back to 2.3.x:
+         jakarta.xml.bind-api only moved from the javax.xml.bind to the jakarta.xml.bind namespace
+         at 3.0.0, and swagger-core-jakarta needs the latter or /v3/api-docs dies with
+         NoClassDefFoundError: jakarta/xml/bind/annotation/XmlElement. -->
+    <jaxb-api.version>4.0.5</jaxb-api.version>
+    <jaxb-runtime.version>4.0.9</jaxb-runtime.version>
     <springdoc-openapi-ui.version>2.8.17</springdoc-openapi-ui.version>
     <swagger-annotations.version>2.2.16</swagger-annotations.version>
     <zookeeper.version>3.8.1</zookeeper.version>
@@ -474,16 +479,16 @@
       <artifactId>swagger-annotations</artifactId>
       <version>${swagger-annotations.version}</version>
     </dependency>
-    <!-- API, java.xml.bind module -->
+    <!-- API, jakarta.xml.bind module -->
     <dependency>
       <groupId>org.glassfish.jaxb</groupId>
       <artifactId>jaxb-runtime</artifactId>
-      <version>${jaxb.version}</version>
+      <version>${jaxb-runtime.version}</version>
     </dependency>
     <dependency>
       <groupId>jakarta.xml.bind</groupId>
       <artifactId>jakarta.xml.bind-api</artifactId>
-      <version>${jaxb.version}</version>
+      <version>${jaxb-api.version}</version>
     </dependency>
     <dependency>
       <groupId>jakarta.validation</groupId>
