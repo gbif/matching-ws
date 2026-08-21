@@ -35,6 +35,9 @@
     <logstash-logback.version>8.1</logstash-logback.version>
     <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
     <gbif-common.version>0.60</gbif-common.version>
+    <!-- motherpom still pins 1.7.0. 2.0.0 splits the parsed tree out into text-tree-parsed,
+         leaving text-tree itself free of any name-parser dependency. -->
+    <text-tree.version>2.0.0</text-tree.version>
     <jackson.version>2.17.0</jackson.version>
     <opencsv.version>5.9</opencsv.version>
     <jcommander.version>1.82</jcommander.version>
@@ -204,13 +207,6 @@
         <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-api</artifactId>
-        </exclusion>
-        <!-- text-tree still declares the pure-Java name-parser 4.0.0 but never calls it. Left in it
-             would put a second, stale NameParser impl next to name-parser-rust, compiled against
-             the 4.x api that 5.0.0 replaced. -->
-        <exclusion>
-          <groupId>org.gbif</groupId>
-          <artifactId>name-parser</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
