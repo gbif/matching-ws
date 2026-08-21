@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.catalogueoflife</groupId>
     <artifactId>motherpom</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.1</version>
   </parent>
 
   <groupId>org.gbif</groupId>
@@ -21,7 +21,7 @@
   </scm>
 
   <properties>
-    <col.version>1.4.0</col.version>
+    <col.version>1.4.1</col.version>
     <java.version>25</java.version>
     <!-- JDK 23+ no longer runs annotation processors found on the classpath unless asked, and
          lombok is discovered that way. Without this every @Slf4j/@Getter expansion is missing. -->
@@ -35,9 +35,6 @@
     <logstash-logback.version>8.1</logstash-logback.version>
     <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
     <gbif-common.version>0.60</gbif-common.version>
-    <!-- motherpom still pins 1.7.0. 2.0.0 splits the parsed tree out into text-tree-parsed,
-         leaving text-tree itself free of any name-parser dependency. -->
-    <text-tree.version>2.0.0</text-tree.version>
     <jackson.version>2.17.0</jackson.version>
     <opencsv.version>5.9</opencsv.version>
     <jcommander.version>1.82</jcommander.version>
