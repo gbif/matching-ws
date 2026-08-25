@@ -8,7 +8,7 @@ import life.catalogue.matching.model.Dataset;
 import life.catalogue.matching.service.MetadataService;
 import lombok.extern.slf4j.Slf4j;
 import org.gbif.dwc.terms.DwcTerm;
-import org.springdoc.core.customizers.OpenApiCustomiser;
+import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -80,7 +80,7 @@ public class APIMetadataConfig extends APIMetadata {
     }
 
     @Bean
-    public OpenApiCustomiser addIdMatchingDescription() {
+    public OpenApiCustomizer addIdMatchingDescription() {
 
         return openApi -> {
             if (openApi.getPaths() == null) return;

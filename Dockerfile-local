@@ -1,5 +1,7 @@
 # Use an official Maven runtime as a parent image
-FROM maven:3.9.11-eclipse-temurin-21-alpine AS builder
+# glibc, not alpine: the tests here parse names through the name-parser-rust cdylib, which is
+# linked against libc.so.6 with no musl build published
+FROM maven:3.9.11-eclipse-temurin-25 AS builder
 
 # Set the working directory in the container
 WORKDIR /app
@@ -55,7 +57,7 @@ RUN if [ -n "$CLB_DATASET_ID" ]; then \
     fi
 
 # Copy the executable JAR file from the builder image to the new image
-FROM openjdk:11
+FROM eclipse-temurin:25
 
 # Set environment variables
 ARG DEBIAN_FRONTEND=noninteractive
@@ -87,7 +89,7 @@ COPY --from=builder --chown=$USER:$USER /app/backend/dataset.json /opt/gbif/$APP
 
 # CSV export from checklistbank
 RUN if [ -n "$CLB_DATASET_ID" ]; then \
-        java $JVM_OPTIONS -jar app.jar \
+        java $JVM_OPTIONS --enable-native-access=ALL-UNNAMED -jar app.jar \
         --mode=INDEX \
         --index.path=/data/$APP_ARTIFACT/index \
         --export.path=/data/$APP_ARTIFACT/exports \
@@ -102,4 +104,4 @@ RUN if [ -n "$CLB_DATASET_ID" ]; then \
 USER $USER
 EXPOSE $SERVER_PORT
 
-CMD java $JVM_OPTIONS -jar app.jar --server.port=$SERVER_PORT --working.dir=/opt/gbif/$APP_ARTIFACT --mode=RUN
+CMD java $JVM_OPTIONS --enable-native-access=ALL-UNNAMED -jar app.jar --server.port=$SERVER_PORT --working.dir=/opt/gbif/$APP_ARTIFACT --mode=RUN

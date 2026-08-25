@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -179,7 +179,10 @@ public class MatchV1Controller {
     @RequestParam(value = "genericName", required = false) String genericName,
     @RequestParam(value = "specificEpithet", required = false) String specificEpithet,
     @RequestParam(value = "infraspecificEpithet", required = false) String infraspecificEpithet,
-    ClassificationQuery classification,
+    // hidden from the generated spec: the classification query params are documented by hand in
+    // the @Parameters block above. Without this springdoc 2.x cannot name the command object and
+    // emits a required, object-typed "argN" query parameter that breaks the operation in swagger-ui.
+    @Parameter(hidden = true) ClassificationQuery classification,
     @RequestParam(value = "exclude", required = false) Set<Integer> exclude,
     @RequestParam(value = "strict", required = false) Boolean strict,
     @RequestParam(value = "verbose", required = false) Boolean verbose,
@@ -349,7 +352,10 @@ public class MatchV1Controller {
     @RequestParam(value = "genericName", required = false) String genericName,
     @RequestParam(value = "specificEpithet", required = false) String specificEpithet,
     @RequestParam(value = "infraspecificEpithet", required = false) String infraspecificEpithet,
-    ClassificationQuery classification,
+    // hidden from the generated spec: the classification query params are documented by hand in
+    // the @Parameters block above. Without this springdoc 2.x cannot name the command object and
+    // emits a required, object-typed "argN" query parameter that breaks the operation in swagger-ui.
+    @Parameter(hidden = true) ClassificationQuery classification,
     @RequestParam(value = "exclude", required = false) Set<Integer> exclude,
     @RequestParam(value = "strict", required = false) Boolean strict,
     @RequestParam(value = "verbose", required = false) Boolean verbose,

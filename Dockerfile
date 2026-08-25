@@ -1,5 +1,7 @@
-# Use an official Maven runtime as a parent image
-FROM maven:3.9.11-eclipse-temurin-21-alpine AS builder
+# Use an official Maven runtime as a parent image.
+# glibc, not alpine: this stage also runs the indexer, which parses names through the
+# name-parser-rust cdylib, and that cdylib is linked against libc.so.6 with no musl build published.
+FROM maven:3.9.11-eclipse-temurin-25 AS builder
 # Set the working directory in the container
 WORKDIR /app
 
@@ -55,7 +57,7 @@ RUN if [ -n "$CLB_DATASET_ID" ]; then \
 
 # CSV export from checklistbank and build index
 RUN if [ -n "$CLB_DATASET_ID" ]; then \
-        java $JVM_OPTIONS -jar /app/backend/matching-ws/target/matching-ws-1.0-SNAPSHOT-exec.jar  \
+        java $JVM_OPTIONS --enable-native-access=ALL-UNNAMED -jar /app/backend/matching-ws/target/matching-ws-1.0-SNAPSHOT-exec.jar  \
         --spring.cloud.bootstrap.location=/app/backend/matching-ws/src/main/resources/bootstrap.yml \
         --mode=INDEX \
         --server.port=0 \
@@ -75,7 +77,7 @@ RUN if [ -n "$CLB_DATASET_ID" ]; then \
 RUN echo "spring.cloud.zookeeper.discovery.metadata.timestamp=$(date +%s%3N)" > /tmp/timestamp.properties
 
 # Copy the executable JAR file from the builder image to the new image
-FROM eclipse-temurin:21
+FROM eclipse-temurin:25
 
 # Set environment variables
 ARG DEBIAN_FRONTEND=noninteractive
@@ -103,8 +105,10 @@ ENV SPRING_BOOT_DISCOVERY_METADATA_HOST=""
 ENV SPRING_BOOT_DISCOVERY_METADATA_PATH=""
 ENV EXTRA_RUN_ARGS=""
 
-# Directories and perms
-RUN mkdir -p /data/$APP_ARTIFACT && \
+# Directories and perms.
+# The ubuntu base ships a stock "ubuntu" account on 1000:1000, so free that up before claiming it.
+RUN userdel -r ubuntu 2>/dev/null || true; \
+    mkdir -p /data/$APP_ARTIFACT && \
     mkdir -p /opt/gbif/$APP_ARTIFACT && \
     groupadd -r $USER -g 1000 && \
     useradd -r -g $USER -u 1000 -m $USER && \
@@ -127,6 +131,7 @@ EXPOSE $SERVER_PORT $SERVER_ADMIN_PORT
 USER $USER
 
 CMD java $JVM_OPTIONS \
+    --enable-native-access=ALL-UNNAMED \
     -jar app.jar \
     --server.servlet.context-path=$SERVLET_CONTEXT_PATH \
     --server.port=$SERVER_PORT \

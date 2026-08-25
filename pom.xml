@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.catalogueoflife</groupId>
     <artifactId>motherpom</artifactId>
-    <version>1.1.3</version>
+    <version>1.4.1</version>
   </parent>
 
   <groupId>org.gbif</groupId>
@@ -21,27 +21,36 @@
   </scm>
 
   <properties>
-    <col.version>1.0.2</col.version>
-    <java.version>21</java.version>
+    <col.version>1.4.1</col.version>
+    <java.version>25</java.version>
+    <!-- JDK 23+ no longer runs annotation processors found on the classpath unless asked, and
+         lombok is discovered that way. Without this every @Slf4j/@Getter expansion is missing. -->
+    <maven.compiler.proc>full</maven.compiler.proc>
     <lucene.version>9.10.0</lucene.version>
-    <spring-boot.version>2.7.18</spring-boot.version>
-    <spring-cloud.version>2021.0.9</spring-cloud.version>
-    <lombok.version>1.18.40</lombok.version>
+    <spring-boot.version>3.5.16</spring-boot.version>
+    <spring-cloud.version>2025.0.3</spring-cloud.version>
+    <lombok.version>1.18.46</lombok.version>
     <spotless-maven-plugin.version>2.43.0</spotless-maven-plugin.version>
-    <logback.version>1.2.13</logback.version>
-    <logstash-logback.version>4.10</logstash-logback.version>
-    <mybatis-spring-boot.version>2.3.1</mybatis-spring-boot.version>
+    <logback.version>1.5.38</logback.version>
+    <logstash-logback.version>8.1</logstash-logback.version>
+    <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
     <gbif-common.version>0.60</gbif-common.version>
     <jackson.version>2.17.0</jackson.version>
     <opencsv.version>5.9</opencsv.version>
     <jcommander.version>1.82</jcommander.version>
-    <slf4j.version>1.7.36</slf4j.version>
-    <jaxb.version>2.3.2</jaxb.version>
-    <springdoc-openapi-ui.version>1.6.8</springdoc-openapi-ui.version>
+    <slf4j.version>2.0.17</slf4j.version>
+    <!-- Jakarta EE 10, the versions Spring Boot 3.5 manages. These must NOT go back to 2.3.x:
+         jakarta.xml.bind-api only moved from the javax.xml.bind to the jakarta.xml.bind namespace
+         at 3.0.0, and swagger-core-jakarta needs the latter or /v3/api-docs dies with
+         NoClassDefFoundError: jakarta/xml/bind/annotation/XmlElement. -->
+    <jaxb-api.version>4.0.5</jaxb-api.version>
+    <jaxb-runtime.version>4.0.9</jaxb-runtime.version>
+    <springdoc-openapi-ui.version>2.8.17</springdoc-openapi-ui.version>
     <swagger-annotations.version>2.2.16</swagger-annotations.version>
     <zookeeper.version>3.8.1</zookeeper.version>
-    <spring-cloud-zookeeper.version>3.1.5</spring-cloud-zookeeper.version>
-    <spring-boot-admin.version>2.7.16</spring-boot-admin.version>
+    <!-- spring-cloud library train that goes with spring-cloud-dependencies above -->
+    <spring-cloud-libs.version>4.3.3</spring-cloud-libs.version>
+    <spring-boot-admin.version>3.5.10</spring-boot-admin.version>
     <kryo.version>5.6.0</kryo.version>
     <curator-framework.version>5.5.0-disable-connectstr-updates</curator-framework.version>
   </properties>
@@ -110,6 +119,16 @@
       <dependency>
         <groupId>org.catalogueoflife</groupId>
         <artifactId>dao</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>kryo</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
+        <artifactId>reference</artifactId>
         <version>${col.version}</version>
       </dependency>
       <dependency>
@@ -216,7 +235,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-dependencies</artifactId>
-      <version>2021.0.9</version>
+      <version>${spring-cloud.version}</version>
       <type>pom</type>
       <exclusions>
         <exclusion>
@@ -236,7 +255,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-commons</artifactId>
-      <version>3.1.8</version>
+      <version>${spring-cloud-libs.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.springframework.cloud</groupId>
@@ -255,7 +274,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter</artifactId>
-      <version>3.1.8</version>
+      <version>${spring-cloud-libs.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.springframework.cloud</groupId>
@@ -274,7 +293,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-bootstrap</artifactId>
-      <version>3.0.6</version>
+      <version>${spring-cloud-libs.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.springframework.cloud</groupId>
@@ -293,7 +312,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-zookeeper-all</artifactId>
-      <version>${spring-cloud-zookeeper.version}</version>
+      <version>${spring-cloud-libs.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.zookeeper</groupId>
@@ -324,7 +343,7 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
-      <version>${spring-cloud-zookeeper.version}</version>
+      <version>${spring-cloud-libs.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.curator</groupId>
@@ -445,7 +464,7 @@
     </dependency>
     <dependency>
       <groupId>org.springdoc</groupId>
-      <artifactId>springdoc-openapi-ui</artifactId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>${springdoc-openapi-ui.version}</version>
     </dependency>
     <dependency>
@@ -453,16 +472,16 @@
       <artifactId>swagger-annotations</artifactId>
       <version>${swagger-annotations.version}</version>
     </dependency>
-    <!-- API, java.xml.bind module -->
+    <!-- API, jakarta.xml.bind module -->
     <dependency>
       <groupId>org.glassfish.jaxb</groupId>
       <artifactId>jaxb-runtime</artifactId>
-      <version>${jaxb.version}</version>
+      <version>${jaxb-runtime.version}</version>
     </dependency>
     <dependency>
       <groupId>jakarta.xml.bind</groupId>
       <artifactId>jakarta.xml.bind-api</artifactId>
-      <version>${jaxb.version}</version>
+      <version>${jaxb-api.version}</version>
     </dependency>
     <dependency>
       <groupId>jakarta.validation</groupId>
@@ -544,19 +563,33 @@
       <groupId>org.gbif</groupId>
       <artifactId>name-parser-api</artifactId>
     </dependency>
+    <!--
+      name-parser 5.0.0 dropped the pure-Java implementation; org.gbif.nameparser:name-parser-rust
+      is the only NameParser now. It downcalls a Rust cdylib over FFM (java.lang.foreign), which is
+      why JDK 22+ (we are on 25) and the enable-native-access opt-in are required at runtime.
+
+      The artifact is a thin classes-only JAR plus one classifier JAR per platform carrying that
+      platform's cdylib under native/<os.detected.classifier>/. Ffi picks the directory from
+      os.name/os.arch at *runtime*, so bundling several is fine and only the matching one is loaded.
+      We hard-wire both linux classifiers because JenkinsfileDocker builds a single -exec.jar on the
+      x86_64 build agent and ships it in both the linux/amd64 and the linux/arm64 image; resolving
+      only ${os.detected.classifier} would leave the arm64 image without a cdylib.
+    -->
     <dependency>
-      <groupId>org.gbif</groupId>
-      <artifactId>name-parser</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>jul-to-slf4j</artifactId>
-        </exclusion>
-      </exclusions>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+      <version>${name-parser-rust.version}</version>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>org.gbif.nameparser</groupId>
+      <artifactId>name-parser-rust</artifactId>
+      <version>${name-parser-rust.version}</version>
+      <classifier>linux-aarch_64</classifier>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -608,6 +641,25 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
         <version>3.7.0</version>
+      </plugin>
+      <!--
+        Tests parse names, which downcalls into the rust parser's cdylib over FFM. Without the
+        opt-in every forked JVM warns about the restricted java.lang.foreign call, and a later JDK
+        will refuse it outright. ${java.argLine} is the motherpom's list, kept by reference.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
@@ -666,4 +718,29 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      The two linux cdylibs above cover everything we deploy. Developers build and test on macOS,
+      so add that host's classifier JAR too - ${os.detected.classifier} comes from the os-maven-plugin
+      build extension inherited from the motherpom. Guarded by a profile rather than declared
+      unconditionally because on linux it would resolve to a duplicate of one of the two above,
+      which Maven rejects as a non-unique dependency key.
+    -->
+    <profile>
+      <id>native-parser-macos</id>
+      <activation>
+        <os>
+          <family>mac</family>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>org.gbif.nameparser</groupId>
+          <artifactId>name-parser-rust</artifactId>
+          <classifier>${os.detected.classifier}</classifier>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 </project>

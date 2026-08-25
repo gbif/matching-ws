@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
       maven 'Maven 3.9.9'
-      jdk 'LibericaJDK21'
+      jdk 'LibericaJDK25'
     }
     options {
         ansiColor('xterm')
@@ -39,6 +39,7 @@ pipeline {
                         usernamePassword(credentialsId: 'col', usernameVariable: 'CLB_USER', passwordVariable: 'CLB_PASSWORD')]) {
                 sh  "rm -Rf ${env.WORKSPACE}/index-build"
                 sh  "java $JVM_OPTIONS \
+                     --enable-native-access=ALL-UNNAMED \
                      --add-opens=java.base/java.lang=ALL-UNNAMED \
                      --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
                      --add-opens=java.base/java.io=ALL-UNNAMED \

@@ -68,8 +68,12 @@ public class MatchingService {
   final HigherTaxaComparator htComp;
   private final StringSimilarity sim = new ScientificNameSimilarity();
 
+  // was OTU + VIRUS + HYBRID_FORMULA. name-parser 5.0.0 renamed OTU -> IDENTIFIER and
+  // HYBRID_FORMULA -> FORMULA, and folded VIRUS into OTHER. OTHER is deliberately left out rather
+  // than standing in for VIRUS: it would drag every other non name in with it, and the boost is
+  // near worthless for viruses anyway - they are multi word, so they already collect the +10 below.
   private static final Set<NameType> STRICT_MATCH_TYPES =
-      Set.of(NameType.OTU, NameType.VIRUS, NameType.HYBRID_FORMULA);
+      Set.of(NameType.IDENTIFIER, NameType.FORMULA);
   private static final List<Rank> HIGHER_QUERY_RANK =
       List.of(
           Rank.SPECIES, Rank.GENUS,
@@ -397,7 +401,11 @@ public class MatchingService {
 
     if (idMatch != null && scientificName != null) {
       try {
-        ParsedName name = NameParsers.INSTANCE.parse(scientificName, rank, null);
+        ParsedName name = NameParsers.parseOrNull(scientificName, rank, null);
+        if (name == null) {
+          // nothing to compare for a hybrid formula, identifier, placeholder or other non name
+          return;
+        }
         String canonicalName = name.canonicalNameMinimal();
 
         if (!idMatch.getUsage().getCanonicalName().equalsIgnoreCase(canonicalName) &&
@@ -450,15 +458,17 @@ public class MatchingService {
       CleanupUtils.clean(classification);
     }
 
-    try {
-      // use name parser to make the name a canonical one
-      // we build the name with flags manually as we wanna exclude indet. names such as "Abies
-      // spec." and rather match them to Abies only
-      Rank npRank = rank == null ? null : Rank.valueOf(rank.name());
-      start = System.currentTimeMillis();
-      parsedName = NameParsers.INSTANCE.parse(scientificName, npRank, null);
-      timings.put("nameParse", System.currentTimeMillis() - start);
-      queryNameType = NameType.valueOf(parsedName.getType().name());
+    // use name parser to make the name a canonical one
+    // we build the name with flags manually as we wanna exclude indet. names such as "Abies
+    // spec." and rather match them to Abies only
+    Rank npRank = rank == null ? null : Rank.valueOf(rank.name());
+    start = System.currentTimeMillis();
+    ParseResult parseResult = NameParsers.parse(scientificName, npRank, null);
+    timings.put("nameParse", System.currentTimeMillis() - start);
+    queryNameType = parseResult.type();
+    parsedName = NameParsers.parsedName(parseResult);
+
+    if (parsedName != null) {
       scientificName = parsedName.canonicalNameMinimal();
 
       // parsed genus provided for a name lower than genus?
@@ -486,22 +496,18 @@ public class MatchingService {
           }
         }
       }
-
-      // hybrid names, virus names, OTU & blacklisted ones don't provide any parsed name
-      if (mainMatchingMode != MatchingMode.STRICT && !parsedName.getType().isParsable()) {
-        // turn off fuzzy matching
-        mainMatchingMode = MatchingMode.STRICT;
-        log.debug(
-            "Unparsable {} name, turn off fuzzy matching for {}", parsedName.getType(), scientificName);
-      }
-
-    } catch (UnparsableNameException e) {
-      // hybrid names, virus names & blacklisted ones - dont provide any parsed name
-      queryNameType = NameType.valueOf(e.getType().name());
-      // we assign all OTUs unranked
-      if (NameType.OTU == queryNameType) {
+    } else {
+      // hybrid formulas, identifiers & blacklisted ones - dont provide any parsed name
+      // we assign all OTUs, which are identifiers now, unranked
+      if (NameType.IDENTIFIER == queryNameType) {
         rank = Rank.UNRANKED;
       }
+    }
+
+    // hybrid names, OTU & blacklisted ones cannot be matched fuzzily.
+    // note this is the NameType predicate: informal names have no ParsedName of their own since
+    // 5.0.0, but they are parsable and stay eligible for fuzzy matching
+    if (!queryNameType.isParsable()) {
       if (mainMatchingMode != MatchingMode.STRICT) {
         // turn off fuzzy matching
         mainMatchingMode = MatchingMode.STRICT;
@@ -510,8 +516,6 @@ public class MatchingService {
       } else {
         log.debug("Unparsable {} name: {}", queryNameType, scientificName);
       }
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
     }
 
     // run the initial match
@@ -539,7 +543,7 @@ public class MatchingService {
       start = System.currentTimeMillis();
       NameUsageMatch genusMatch =
           match(
-              NameType.valueOf(parsedName.getType().name()),
+              parsedName.getType(),
               null,
               getGenusOrAbove(parsedName),
               Rank.GENUS,
@@ -1072,7 +1076,11 @@ public class MatchingService {
     if (pn != null) {
       try {
         var spn = ScientificName.wrap(pn);
-        ParsedName mpn = NameParsers.INSTANCE.parse(m.getUsage().getName(), m.getUsage().getRank(), null);
+        ParsedName mpn = NameParsers.parseOrNull(m.getUsage().getName(), m.getUsage().getRank(), null);
+        if (mpn == null) {
+          // the matched name has no structure - nothing to compare authorships on
+          return similarity;
+        }
         var smn = ScientificName.wrap(mpn);
         // authorship comparison was requested!
         Equality eq = authComp.compareAuthorsFirst(spn, smn);
@@ -1088,10 +1096,6 @@ public class MatchingService {
           similarity += mpn.isAutonym() || pn.isAutonym() ? 1 : 8;
         }
 
-      } catch (UnparsableNameException e) {
-        if (e.getType().isParsable()) {
-          log.warn("Failed to parse name: {}", m.getUsage().getName());
-        }
       } catch (Exception e) {
         log.error("Error comparing authorship", e);
         similarity -= 2;
@@ -1223,7 +1227,7 @@ public class MatchingService {
       // fuzzy - be careful!
       confidence = (int) sim.getSimilarity(canonicalName, m.getUsage().getCanonicalName()) - 5;
       // fuzzy OTU match? That is dangerous, often one character/number means sth entirely different
-      if (queryNameType == NameType.OTU) {
+      if (queryNameType == NameType.IDENTIFIER) {
         confidence -= 50;
       }
 

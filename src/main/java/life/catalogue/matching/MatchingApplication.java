@@ -5,9 +5,7 @@ import life.catalogue.matching.model.APIMetadata;
 import life.catalogue.matching.service.IndexingService;
 import life.catalogue.matching.service.MatchingService;
 import life.catalogue.matching.service.MetadataService;
-import life.catalogue.matching.util.NameParsers;
 
-import java.io.IOException;
 import java.text.NumberFormat;
 import java.util.Arrays;
 import java.util.List;
@@ -98,14 +96,7 @@ public class MatchingApplication implements ApplicationRunner {
       return;
     }
 
-    try {
-      log.info("Loading name parser configs from ChecklistBank");
-      NameParsers.INSTANCE.configs().loadFromCLB();
-    } catch (IOException e) {
-      log.error("Failed to load name parser configs from CLB", e);
-    } catch (InterruptedException e) {
-      log.warn("Interrupted. Failed to load name parser configs from CLB.", e);
-    }
+    // no name parser configs to load: the rust parser dropped them with name-parser 5.0.0
 
     metadata.ifPresent(m -> {
       if (m.getBuildInfo() != null) {
