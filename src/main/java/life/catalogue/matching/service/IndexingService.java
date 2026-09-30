@@ -774,6 +774,7 @@ public class IndexingService {
           var rank = Rank.valueOf(doc.get(FIELD_RANK));
           Map<String, String> hierarchy = loadHierarchy(searcher, id);
           String scientificName = doc.get(FIELD_SCIENTIFIC_NAME);
+          String canonical = doc.get(FIELD_CANONICAL_NAME);
           String status = doc.get(FIELD_STATUS);
           if (acceptedOnly && !isAccepted(status)) {
             // skip synonyms, otherwise we would index them twice
@@ -794,15 +795,19 @@ public class IndexingService {
             // use strict matching for classification to classification matching
             NameUsageMatch nameUsageMatch = matchingService.match(scientificName, rank, classification, true);
             if (nameUsageMatch.getUsage() != null && nameUsageMatch.getDiagnostics().getMatchType() == MatchType.HIGHERRANK) {
-              log.info("Ignore higher match for {} {} # {}", rank, scientificName, id);
+              log.info("Ignoring higher match for {} {} # {}", rank, scientificName, id);
             } else if (nameUsageMatch.getUsage() != null) {
-              doc.add(new StringField(FIELD_JOIN_ID,
-                nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
-                  nameUsageMatch.getUsage().getKey(), Field.Store.YES)
-              );
-
-              writer.addDocument(doc);
-              matchedCounter.incrementAndGet();
+              if (acceptedOnly && !nameUsageMatch.getUsage().getCanonicalName().equals(canonical)) {
+                log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and acceptedOnly is true",
+                  rank, scientificName, id, nameUsageMatch.getUsage().getCanonicalName(), canonical);
+              } else {
+                doc.add(new StringField(FIELD_JOIN_ID,
+                        nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
+                                nameUsageMatch.getUsage().getKey(), Field.Store.YES)
+                );
+                writer.addDocument(doc);
+                matchedCounter.incrementAndGet();
+              }
             } else {
               log.info("No match for {} {} # {}", rank, scientificName, id);
             }
