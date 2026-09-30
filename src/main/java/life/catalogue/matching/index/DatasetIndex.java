@@ -892,11 +892,10 @@ public class DatasetIndex {
     // if ancillary join indexes are present, add them to the match
     for (Dataset dataset: ancillarySearchers.keySet()){
       IndexSearcher ancillarySearcher = ancillarySearchers.get(dataset);
-      Query query = new TermQuery(
-        new Term(FIELD_JOIN_ID, doc.get(FIELD_ID))
-      );
+      Query query = new TermQuery(new Term(FIELD_JOIN_ID, doc.get(FIELD_ID)));
       try {
         TopDocs docs = ancillarySearcher.search(query, 3);
+        boolean isIUCNSet = false;
         if (docs.totalHits.value > 0) {
           Document ancillaryDoc = ancillarySearcher.storedFields().document(docs.scoreDocs[0].doc);
           NameUsageMatch.Status ancillaryStatus = new NameUsageMatch.Status();
@@ -911,8 +910,23 @@ public class DatasetIndex {
             ancillaryStatus.setDatasetAlias(dataset.getAlias());
             ancillaryStatus.setSourceId(ancillaryDoc.get(FIELD_ID));
             u.addAdditionalStatus(ancillaryStatus);
+            isIUCNSet = true;
           }
         }
+
+        if (!isIUCNSet){
+          // If not set, default to NOT_EVALUATED
+          // See https://github.com/gbif/pipelines/issues/1236
+          IUCNUtils.IUCN iucn = IUCNUtils.IUCN.NOT_EVALUATED;
+          NameUsageMatch.Status ancillaryStatus = new NameUsageMatch.Status();
+          ancillaryStatus.setStatus(iucn.name());
+          ancillaryStatus.setStatusCode(iucn.getCode());
+          ancillaryStatus.setClbDatasetKey(dataset.getClbKey().toString());
+          ancillaryStatus.setDatasetKey(dataset.getDatasetKey());
+          ancillaryStatus.setDatasetAlias(dataset.getAlias());
+          u.addAdditionalStatus(ancillaryStatus);
+        }
+
       } catch (IOException e) {
         log.error("Cannot load usage {} from lucene index", doc.get(FIELD_ID), e);
       }

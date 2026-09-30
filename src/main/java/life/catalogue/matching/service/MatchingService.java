@@ -1054,7 +1054,7 @@ public class MatchingService {
       }
       // did all equal matches have the same higherKey?
       if (higherKey != null) {
-        // NPE safetly first - maybe the key is missing in the index
+        // NPE safety first - maybe the key is missing in the index
         NameUsageMatch match = datasetIndex.matchByUsageKey(higherKey);
         if (match != null) {
           match.getDiagnostics().setMatchType(MatchType.HIGHERRANK);
