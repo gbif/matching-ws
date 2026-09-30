@@ -459,7 +459,7 @@ public class MatchV1Controller {
         "scientificName", scientificName,
         "taxonomicStatus", NameUsageMatchV1.TaxonomicStatusV1.convert(
           match.getUsage().getStatus()),
-        "iucnTaxonID", status.getSourceId(),
+        "iucnTaxonID", status.getSourceId() != null ? status.getSourceId() : "",
         "code", iucn.getCode()
       );
     } catch (IllegalArgumentException e) {
@@ -469,7 +469,7 @@ public class MatchV1Controller {
         "usageKey", Integer.parseInt(usageKey),
         "scientificName", scientificName,
         "taxonomicStatus", match.getUsage().getStatus(),
-        "iucnTaxonID", status.getSourceId(),
+        "iucnTaxonID", status.getSourceId() != null ? status.getSourceId() : "",
         "code", status.getStatus()
       );
     }
