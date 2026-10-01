@@ -13,12 +13,14 @@ ENV SERVLET_CONTEXT_PATH="/"
 ENV USER=matching
 ENV APP_ARTIFACT=matching-ws
 ENV APP_NAME=matching-ws
-ENV APP_VERSION="1.0-SNAPSHOT"
 ENV EXTRA_RUN_ARGS=""
 ENV CONF_DIR="/usr/local/gbif/conf"
 ENV SERVICE_BASE_URL="http://localhost:8080"
 ENV ZK_SERVER_PORT=8080
 ENV ZK_TIMESTAMP=-1
+
+ARG APP_VERSION=1.0-SNAPSHOT
+ENV APP_VERSION=${APP_VERSION}
 
 # Directories and perms.
 # The ubuntu base ships a stock "ubuntu" account on 1000:1000, so free that up before claiming it.
