@@ -28,6 +28,10 @@ pipeline {
     stages {
         stage('Maven build matching-ws') {
           steps {
+              sh "git fetch --tags"
+              sh "git describe --tags --abbrev=0 > ${env.WORKSPACE}/version.txt"
+              sh "export MATCHING_WS_VERSION=\$(cat ${env.WORKSPACE}/version.txt)"
+              sh "echo \"MATCHING_WS_VERSION=\$MATCHING_WS_VERSION\""
               sh "mvn clean install -DskipTests"
           }
         }
@@ -87,7 +91,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker build -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
+                      sh "docker build -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
                       sh "docker push docker.gbif.org/matching-ws:${FULL_TAG}"
 
                       // Tag and push the latest version if required
@@ -112,7 +116,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker buildx build --no-cache -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
+                      sh "docker buildx build --no-cache -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
 
                       // Tag and push the latest version if required
                       if (env.DOCKER_TAG_LATEST) {
