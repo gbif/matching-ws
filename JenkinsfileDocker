@@ -27,14 +27,15 @@ pipeline {
 
     stages {
         stage('Maven build matching-ws') {
-          steps {
-              sh "git fetch --tags"
-              sh "git describe --tags --abbrev=0 > ${env.WORKSPACE}/version.txt"
-              sh "export MATCHING_WS_VERSION=\$(cat ${env.WORKSPACE}/version.txt)"
-              sh "echo $MATCHING_WS_VERSION"
-              sh "git checkout $MATCHING_WS_VERSION"
-              sh "mvn clean install"
-          }
+            steps {
+                sh '''
+                    git fetch --tags
+                    MATCHING_WS_VERSION=$(git describe --tags --abbrev=0)
+                    echo "$MATCHING_WS_VERSION"
+                    git checkout "$MATCHING_WS_VERSION"
+                    mvn clean install
+                '''
+            }
         }
 
         stage('Generate lucene index') {
