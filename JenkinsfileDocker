@@ -27,9 +27,23 @@ pipeline {
 
     stages {
         stage('Maven build matching-ws') {
-          steps {
-              sh "mvn clean install -DskipTests"
-          }
+            steps {
+                script {
+                    sh 'git fetch --tags'
+
+                    env.MATCHING_WS_VERSION = sh(
+                        script: 'git describe --tags --abbrev=0',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Building version: ${env.MATCHING_WS_VERSION}"
+
+                    sh """
+                        git checkout '${env.MATCHING_WS_VERSION}'
+                        mvn clean install
+                    """
+                }
+            }
         }
 
         stage('Generate lucene index') {
@@ -87,7 +101,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker build -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
+                      sh "docker build -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${env.MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
                       sh "docker push docker.gbif.org/matching-ws:${FULL_TAG}"
 
                       // Tag and push the latest version if required
@@ -112,7 +126,7 @@ pipeline {
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
                       // Run Docker build with parameters
-                      sh "docker buildx build --no-cache -f Dockerfile-image --platform linux/${PLATFORM} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
+                      sh "docker buildx build --no-cache -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${env.MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
 
                       // Tag and push the latest version if required
                       if (env.DOCKER_TAG_LATEST) {
