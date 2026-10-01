@@ -92,9 +92,6 @@ pipeline {
                       TIMESTAMP = new Date().format("yyyyMMdd-HHmmss")
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
 
-                      sh "export MATCHING_WS_VERSION=\$(cat ${env.WORKSPACE}/version.txt)"
-                      sh "echo $MATCHING_WS_VERSION"
-
                       // Run Docker build with parameters
                       sh "docker build -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build . -t docker.gbif.org/matching-ws:${FULL_TAG}"
                       sh "docker push docker.gbif.org/matching-ws:${FULL_TAG}"
@@ -119,9 +116,6 @@ pipeline {
                       PLATFORM = "arm64"
                       TIMESTAMP = new Date().format("yyyyMMdd-HHmmss")
                       FULL_TAG = "${DOCKER_TAG}-${PLATFORM}-${CLB_DATASET_ID}-${TIMESTAMP}"
-
-                      sh "export MATCHING_WS_VERSION=\$(cat ${env.WORKSPACE}/version.txt)"
-                      sh "echo $MATCHING_WS_VERSION"
 
                       // Run Docker build with parameters
                       sh "docker buildx build --no-cache -f Dockerfile --platform linux/${PLATFORM} --build-arg APP_VERSION=${MATCHING_WS_VERSION} --build-arg INDEX_BUILD_PATH=index-build -t docker.gbif.org/matching-ws:${FULL_TAG} --push ."
