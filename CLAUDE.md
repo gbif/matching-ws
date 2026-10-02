@@ -79,6 +79,7 @@ This is a **Lucene-based taxonomic name matching service** that indexes scientif
 | `ScientificNameAnalyzer` | Custom Lucene analyzer with scientific name normalization filters |
 | `MatchController` / `MatchV1Controller` | REST endpoints at `/v2/species/match` and `/v1/species/match` |
 | `IDController` | Identifier/taxonID lookup endpoints |
+| `ExportController` / `ExportService` | Streamed zipped CSV downloads of the main, identifier and ancillary indexes at `/v2/species/match/export/{main,identifiers,ancillary}` |
 | `DatasetMapper` | MyBatis mapper for ChecklistBank PostgreSQL queries |
 
 ### Index structure
