@@ -797,9 +797,9 @@ public class IndexingService {
             if (nameUsageMatch.getUsage() != null && nameUsageMatch.getDiagnostics().getMatchType() == MatchType.HIGHERRANK) {
               log.info("Ignoring higher match for {} {} # {}", rank, scientificName, id);
             } else if (nameUsageMatch.getUsage() != null) {
-              if (acceptedOnly && !nameUsageMatch.getUsage().getCanonicalName().equals(canonical)) {
+              if (acceptedOnly && !nameUsageMatch.getAcceptedUsage().getCanonicalName().equals(canonical)) {
                 log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and acceptedOnly is true",
-                  rank, scientificName, id, nameUsageMatch.getUsage().getCanonicalName(), canonical);
+                  rank, scientificName, id, nameUsageMatch.getAcceptedUsage().getCanonicalName(), canonical);
               } else {
                 doc.add(new StringField(FIELD_JOIN_ID,
                         nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
