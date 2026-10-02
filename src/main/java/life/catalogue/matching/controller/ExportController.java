@@ -79,7 +79,7 @@ public class ExportController {
                   @Parameter(
                           name = "datasetKey",
                           description = "The checklistbank dataset key of the checklist to match against.",
-                          in = ParameterIn.QUERY, schema = @Schema(implementation = UUID.class))
+                          in = ParameterIn.QUERY, schema = @Schema(implementation = String.class))
           }
   )
   @GetMapping(value = V2_SPECIES_MATCH_EXPORT + "/identifiers", produces = APPLICATION_ZIP)
@@ -104,7 +104,7 @@ public class ExportController {
                   @Parameter(
                           name = "datasetKey",
                           description = "The checklistbank dataset key of the checklist to match against.",
-                          in = ParameterIn.QUERY, schema = @Schema(implementation = UUID.class))
+                          in = ParameterIn.QUERY, schema = @Schema(implementation = String.class))
           }
   )
   @GetMapping(value = V2_SPECIES_MATCH_EXPORT + "/ancillary", produces = APPLICATION_ZIP)
