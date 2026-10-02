@@ -474,6 +474,28 @@ public class DatasetIndex {
   }
 
   /**
+   * Provides access to the readers of the loaded indexes of the given type, keyed by the dataset
+   * they were built from. Intended for bulk access to the index content, e.g. for exports.
+   *
+   * @param type the type of index
+   * @return the readers in a stable order, empty if no index of this type is loaded
+   */
+  public Map<Dataset, IndexReader> getIndexReaders(IndexType type) {
+    Map<Dataset, IndexReader> readers = new LinkedHashMap<>();
+    if (type == IndexType.MAIN) {
+      if (searcher != null) {
+        readers.put(coreDataset != null ? coreDataset : Dataset.builder().build(), searcher.getIndexReader());
+      }
+      return readers;
+    }
+    Map<Dataset, IndexSearcher> searchers = type == IndexType.IDENTIFIER ? identifierSearchers : ancillarySearchers;
+    searchers.entrySet().stream()
+      .sorted(Comparator.comparing(e -> String.valueOf(e.getKey().getClbKey())))
+      .forEach(e -> readers.put(e.getKey(), e.getValue().getIndexReader()));
+    return readers;
+  }
+
+  /**
    * Lookup a name usage by its usage key.
    *
    * @param usageKey the usage key to lookup
