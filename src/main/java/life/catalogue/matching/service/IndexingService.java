@@ -797,17 +797,22 @@ public class IndexingService {
             if (nameUsageMatch.getUsage() != null && nameUsageMatch.getDiagnostics().getMatchType() == MatchType.HIGHERRANK) {
               log.info("Ignoring higher match for {} {} # {}", rank, scientificName, id);
             } else if (nameUsageMatch.getUsage() != null) {
-              if (acceptedOnly && !nameUsageMatch.getAcceptedUsage().getCanonicalName().equals(canonical)) {
-                log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and acceptedOnly is true",
-                  rank, scientificName, id, nameUsageMatch.getAcceptedUsage().getCanonicalName(), canonical);
-              } else {
-                doc.add(new StringField(FIELD_JOIN_ID,
-                        nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
-                                nameUsageMatch.getUsage().getKey(), Field.Store.YES)
-                );
-                writer.addDocument(doc);
-                matchedCounter.incrementAndGet();
+              String matchedCanonical = nameUsageMatch.getAcceptedUsage() != null && nameUsageMatch.getAcceptedUsage().getCanonicalName() != null ?
+                      nameUsageMatch.getAcceptedUsage().getCanonicalName() : nameUsageMatch.getUsage().getCanonicalName();
+              if (matchedCanonical != null){
+                if (acceptedOnly && !matchedCanonical.equals(canonical)) {
+                  log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and acceptedOnly is true",
+                          rank, scientificName, id, matchedCanonical, canonical);
+                } else {
+                  doc.add(new StringField(FIELD_JOIN_ID,
+                          nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
+                                  nameUsageMatch.getUsage().getKey(), Field.Store.YES)
+                  );
+                  writer.addDocument(doc);
+                  matchedCounter.incrementAndGet();
+                }
               }
+
             } else {
               log.info("No match for {} {} # {}", rank, scientificName, id);
             }
