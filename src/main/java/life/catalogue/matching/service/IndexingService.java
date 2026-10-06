@@ -799,10 +799,14 @@ public class IndexingService {
             } else if (nameUsageMatch.getUsage() != null) {
               String matchedCanonical = nameUsageMatch.getAcceptedUsage() != null && nameUsageMatch.getAcceptedUsage().getCanonicalName() != null ?
                       nameUsageMatch.getAcceptedUsage().getCanonicalName() : nameUsageMatch.getUsage().getCanonicalName();
+
+              String matchedRank = nameUsageMatch.getAcceptedUsage() != null && nameUsageMatch.getAcceptedUsage().getRank() != null ?
+                      nameUsageMatch.getAcceptedUsage().getRank().name() : nameUsageMatch.getUsage().getRank().name();
+
               if (matchedCanonical != null){
-                if (acceptedOnly && !matchedCanonical.equals(canonical)) {
-                  log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and acceptedOnly is true",
-                          rank, scientificName, id, matchedCanonical, canonical);
+                if (acceptedOnly && !matchedCanonical.equals(canonical) && !matchedRank.equals(rank.name())) {
+                  log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and ranks do not match {} != {} and acceptedOnly is true",
+                          rank, scientificName, id, matchedCanonical, canonical, matchedRank, rank.name());
                 } else {
                   doc.add(new StringField(FIELD_JOIN_ID,
                           nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
