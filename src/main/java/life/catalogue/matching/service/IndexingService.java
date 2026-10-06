@@ -804,7 +804,7 @@ public class IndexingService {
                       nameUsageMatch.getAcceptedUsage().getRank().name() : nameUsageMatch.getUsage().getRank().name();
 
               if (matchedCanonical != null){
-                if (acceptedOnly && !matchedCanonical.equals(canonical) && !matchedRank.equals(rank.name())) {
+                if (acceptedOnly && (!matchedCanonical.equals(canonical) || !matchedRank.equals(rank.name()))) {
                   log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and ranks do not match {} != {} and acceptedOnly is true",
                           rank, scientificName, id, matchedCanonical, canonical, matchedRank, rank.name());
                 } else {
