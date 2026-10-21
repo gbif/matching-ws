@@ -38,6 +38,8 @@ public class NameUsageMatch implements RankNameResolver {
   Diagnostics diagnostics;
   @Schema(description = "Status information from external sources such as IUCN Red List")
   List<Status> additionalStatus;
+  @Schema(description = "Environments the accepted taxon is known to live in, as provided by the checklist, e.g. MARINE, BRACKISH, FRESHWATER, TERRESTRIAL")
+  List<String> environments;
   @Schema(description = "If the matched usage is a synonym")
   boolean synonym;
   @Schema(description = "The left ID of the nested set")

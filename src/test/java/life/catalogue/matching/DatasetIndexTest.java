@@ -71,6 +71,9 @@ public class DatasetIndexTest {
             StringUtils.isNotBlank(row[1])
                 ? TaxonomicStatus.SYNONYM.toString()
                 : TaxonomicStatus.ACCEPTED.toString());
+        if ("7".equals(n.getId())) {
+          n.setEnvironments("terrestrial,freshwater");
+        }
         usages.add(n);
         row = reader.readNext();
       }
@@ -118,5 +121,20 @@ public class DatasetIndexTest {
     // synonym matching
     m = index.matchByName("Picea abies", false, 2).get(0);
     assertTrue(m.isSynonym());
+  }
+
+  @Test
+  public void testEnvironments() {
+    // accepted usage carries its own environments, upper-cased
+    NameUsageMatch m = index.matchByUsageKey("7");
+    assertEquals(List.of("TERRESTRIAL", "FRESHWATER"), m.getEnvironments());
+
+    // synonym reports the environments of its accepted usage
+    m = index.matchByUsageKey("10");
+    assertTrue(m.isSynonym());
+    assertEquals(List.of("TERRESTRIAL", "FRESHWATER"), m.getEnvironments());
+
+    // no environments -> null (omitted from JSON)
+    assertNull(index.matchByUsageKey("8").getEnvironments());
   }
 }
