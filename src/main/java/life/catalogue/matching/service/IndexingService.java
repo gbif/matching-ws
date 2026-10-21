@@ -286,7 +286,8 @@ public class IndexingService {
         "n.specific_epithet as specificEpithet, " +
         "n.infraspecific_epithet as infraspecificEpithet, " +
         "'' as extension, " +
-        "'' as category " +
+        "'' as category, " +
+        "array_to_string(nu.environments, ',') as environments " +
         "FROM name_usage nu " +
         "INNER JOIN " +
         "name n on n.id = nu.name_id AND n.dataset_key = " + dataset.get().getClbKey() +
@@ -322,6 +323,7 @@ public class IndexingService {
               .specificEpithet(rs.getString("specificEpithet"))
               .infraspecificEpithet(rs.getString("infraspecificEpithet"))
               .category(rs.getString("category"))
+              .environments(rs.getString("environments"))
               .extension(rs.getString("extension"))
               .build();
 
@@ -1348,6 +1350,15 @@ public class IndexingService {
 
     if (StringUtils.isNotBlank(nameUsage.getCategory())) {
       doc.add(new StringField(FIELD_CATEGORY, nameUsage.getCategory(), Field.Store.YES));
+    }
+
+    if (StringUtils.isNotBlank(nameUsage.getEnvironments())) {
+      // multi-valued: one stored field per environment, e.g. MARINE, BRACKISH
+      for (String env : nameUsage.getEnvironments().split(",")) {
+        if (StringUtils.isNotBlank(env)) {
+          doc.add(new StringField(FIELD_ENVIRONMENTS, env.trim().toUpperCase(), Field.Store.YES));
+        }
+      }
     }
 
     return doc;

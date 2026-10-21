@@ -23,6 +23,7 @@ public class IndexConstants {
   public static final String FIELD_TYPE = "type";
   public static final String FIELD_FORMATTED = "formatted";
   public static final String FIELD_CATEGORY = "category";
+  public static final String FIELD_ENVIRONMENTS = "environments";
   public static final String FIELD_JOIN_ID = "joinId";
   public static final String FIELD_RIGHT_NESTED_SET_ID = "rgt";
   public static final String FIELD_LEFT_NESTED_SET_ID = "lft";

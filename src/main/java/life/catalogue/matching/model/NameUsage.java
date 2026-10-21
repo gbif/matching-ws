@@ -51,6 +51,10 @@ public class NameUsage {
   @CsvBindByName(column = "category")
   String category;
 
+  /** Comma separated environments, e.g. "marine,brackish". */
+  @CsvBindByName(column = "environments")
+  String environments;
+
   @CsvBindByName(column = "extension")
   String extension;
 }
