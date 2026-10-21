@@ -881,13 +881,20 @@ public class DatasetIndex {
 
     u.setUsage(constructUsage(doc));
 
+    // environments are a property of the accepted taxon
+    Document environmentsDoc = doc;
     if (doc.get(FIELD_ACCEPTED_ID) != null) {
       synonym = true;
       Optional<Document> accDocOpt = getByUsageKey(doc.get(FIELD_ACCEPTED_ID));
       if (accDocOpt.isPresent()) {
         Document accDoc = accDocOpt.get();
         u.setAcceptedUsage(constructUsage(accDoc));
+        environmentsDoc = accDoc;
       }
+    }
+    String[] environments = environmentsDoc.getValues(FIELD_ENVIRONMENTS);
+    if (environments.length > 0) {
+      u.setEnvironments(Arrays.asList(environments));
     }
 
     if (doc.get(FIELD_LEFT_NESTED_SET_ID) != null) {
