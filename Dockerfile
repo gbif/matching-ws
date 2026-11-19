@@ -8,7 +8,7 @@ ARG INDEX_BUILD_PATH=./index-build
 # Set environment variables
 ENV SERVER_PORT=8080
 ENV SERVER_ADMIN_PORT=8081
-ENV JVM_OPTIONS="-Xms1g -Xmx4g -XX:+UseZGC -XX:+ParallelRefProcEnabled -XX:+AlwaysPreTouch -XX:+UnlockExperimentalVMOptions"
+ENV JVM_OPTIONS="-Xms1g -Xmx4g -XX:+UseZGC -XX:+ParallelRefProcEnabled -XX:+AlwaysPreTouch -XX:+UnlockExperimentalVMOptions -XX:-UseBASE64Intrinsics"
 ENV SERVLET_CONTEXT_PATH="/"
 ENV USER=matching
 ENV APP_ARTIFACT=matching-ws
