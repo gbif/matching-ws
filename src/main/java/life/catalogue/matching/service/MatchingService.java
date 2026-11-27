@@ -377,9 +377,10 @@ public class MatchingService {
       // check if the usage keys are the same
       boolean inconsistent = !Objects.equals(idMatch.getUsage().getKey(), sciNameMatch.getUsage().getKey());
 
-      // if it is a synonym check if the accepted usage is the same
-      if (inconsistent && sciNameMatch.getAcceptedUsage() != null){
-        inconsistent = !Objects.equals(idMatch.getUsage().getKey(), sciNameMatch.getAcceptedUsage().getKey());
+      // either side can be a synonym, so compare the taxa they ultimately point at.
+      // Two different synonyms of the same accepted taxon are not ambiguous.
+      if (inconsistent) {
+        inconsistent = !Objects.equals(acceptedKey(idMatch), acceptedKey(sciNameMatch));
       }
 
       if (inconsistent) {
@@ -388,6 +389,14 @@ public class MatchingService {
         idMatch.addMatchIssue(MatchingIssue.TAXON_MATCH_NAME_AND_ID_AMBIGUOUS);
       }
     }
+  }
+
+  /**
+   * The key of the taxon a match ultimately points at, i.e. the accepted usage for synonyms
+   * and the matched usage itself otherwise.
+   */
+  private static String acceptedKey(NameUsageMatch match) {
+    return match.getAcceptedUsage() != null ? match.getAcceptedUsage().getKey() : match.getUsage().getKey();
   }
 
   /**
@@ -409,7 +418,10 @@ public class MatchingService {
         String canonicalName = name.canonicalNameMinimal();
 
         if (!idMatch.getUsage().getCanonicalName().equalsIgnoreCase(canonicalName) &&
-          !idMatch.getDiagnostics().getMatchedID().getCanonicalName().equalsIgnoreCase(canonicalName)
+          !idMatch.getDiagnostics().getMatchedID().getCanonicalName().equalsIgnoreCase(canonicalName) &&
+          // a synonym identifier may legitimately be supplied together with its accepted name
+          !(idMatch.getAcceptedUsage() != null
+            && canonicalName.equalsIgnoreCase(idMatch.getAcceptedUsage().getCanonicalName()))
         ) {
           log.warn("Inconsistent scientific name for taxonID[{}]: {} vs {}",
             idMatch.getUsage().getKey(), idMatch.getUsage().getCanonicalName(), scientificName);

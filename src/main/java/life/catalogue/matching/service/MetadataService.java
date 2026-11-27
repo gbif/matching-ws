@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import life.catalogue.matching.index.DatasetIndex;
 import life.catalogue.matching.model.APIMetadata;
+import life.catalogue.matching.model.IndexMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -66,26 +67,71 @@ public class MetadataService {
         return Optional.empty();
     }
 
-    /**
-     * Applies non-null values from the configured APIMetadata (application.yaml) to the generated one.
-     */
     private void applyAPIMetadataOverrides(APIMetadata metadata) {
-        if (apiMetadataOverrides == null || metadata == null) return;
+        applyOverrides(metadata, apiMetadataOverrides);
+    }
 
-        if (apiMetadataOverrides.getCreated() != null) {
-            metadata.setCreated(apiMetadataOverrides.getCreated());
+    /**
+     * Applies the values configured in application.yaml under api.metadata to the metadata generated from the index.
+     * The main index is merged field by field, so a config can change single values like the clbDatasetKey,
+     * e.g. to point to a copy of the indexed dataset in a non-prod ChecklistBank, and keeps all others from the index.
+     */
+    static void applyOverrides(APIMetadata metadata, APIMetadata overrides) {
+        if (overrides == null || metadata == null) return;
+
+        if (overrides.getCreated() != null) {
+            metadata.setCreated(overrides.getCreated());
         }
-        if (apiMetadataOverrides.getBuildInfo() != null) {
-            metadata.setBuildInfo(apiMetadataOverrides.getBuildInfo());
+        if (overrides.getBuildInfo() != null) {
+            metadata.setBuildInfo(overrides.getBuildInfo());
         }
-        if (apiMetadataOverrides.getMainIndex() != null) {
-            metadata.setMainIndex(apiMetadataOverrides.getMainIndex());
+        if (overrides.getMainIndex() != null) {
+            if (metadata.getMainIndex() == null) {
+                metadata.setMainIndex(overrides.getMainIndex());
+            } else {
+                merge(metadata.getMainIndex(), overrides.getMainIndex());
+            }
         }
-        if (apiMetadataOverrides.getIdentifierIndexes() != null && !apiMetadataOverrides.getIdentifierIndexes().isEmpty()) {
-            metadata.setIdentifierIndexes(apiMetadataOverrides.getIdentifierIndexes());
+        if (overrides.getIdentifierIndexes() != null && !overrides.getIdentifierIndexes().isEmpty()) {
+            metadata.setIdentifierIndexes(overrides.getIdentifierIndexes());
         }
-        if (apiMetadataOverrides.getAncillaryIndexes() != null && !apiMetadataOverrides.getAncillaryIndexes().isEmpty()) {
-            metadata.setAncillaryIndexes(apiMetadataOverrides.getAncillaryIndexes());
+        if (overrides.getAncillaryIndexes() != null && !overrides.getAncillaryIndexes().isEmpty()) {
+            metadata.setAncillaryIndexes(overrides.getAncillaryIndexes());
         }
+    }
+
+    /**
+     * Copies the configured values of an index onto the generated one.
+     * The counts default to 0 and an empty map, so only positive counts and non-empty maps count as configured.
+     */
+    private static void merge(IndexMetadata index, IndexMetadata override) {
+        if (override.getClbDatasetKey() != null) {
+            index.setClbDatasetKey(override.getClbDatasetKey());
+        }
+        if (override.getDatasetKey() != null) {
+            index.setDatasetKey(override.getDatasetKey());
+        }
+        if (override.getDatasetAlias() != null) {
+            index.setDatasetAlias(override.getDatasetAlias());
+        }
+        if (override.getDatasetTitle() != null) {
+            index.setDatasetTitle(override.getDatasetTitle());
+        }
+        if (isPositive(override.getSizeInMB())) {
+            index.setSizeInMB(override.getSizeInMB());
+        }
+        if (isPositive(override.getNameUsageCount())) {
+            index.setNameUsageCount(override.getNameUsageCount());
+        }
+        if (override.getMatchesToMain() != null) {
+            index.setMatchesToMain(override.getMatchesToMain());
+        }
+        if (override.getNameUsageByRankCount() != null && !override.getNameUsageByRankCount().isEmpty()) {
+            index.setNameUsageByRankCount(override.getNameUsageByRankCount());
+        }
+    }
+
+    private static boolean isPositive(Long x) {
+        return x != null && x > 0;
     }
 }
