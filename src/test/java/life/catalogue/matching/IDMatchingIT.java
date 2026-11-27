@@ -52,14 +52,12 @@ public class IDMatchingIT {
      NameUsage.builder().id("ext-13").parentId("ext-12").scientificName("Elytrigia repens (L.) Desv.").status(TaxonomicStatus.SYNONYM.toString()).rank(Rank.SPECIES.toString()).build()
     );
 
-    Directory tempJoinIndex = IndexingService.newMemoryIndex(usages);
     Directory joinIndex = new ByteBuffersDirectory();
 
     Long[] counts = IndexingService.createJoinIndex(
       matcher,
-      tempJoinIndex,
+      usages,
       joinIndex,
-      false,
       false,
       false,
       1,
@@ -78,11 +76,10 @@ public class IDMatchingIT {
     datasetIndex.initWithIdentifierDir(dataset, joinIndex);
 
     // create an IUCN like ancillary index, joined to accepted usages only
-    Directory tempIucnIndex = IndexingService.newMemoryIndex(List.of(
-      NameUsage.builder().id("iucn-1").scientificName("Panicum repens L.").status(TaxonomicStatus.ACCEPTED.toString()).rank(Rank.SPECIES.toString()).category("vulnerable").build()
-    ));
     Directory iucnIndex = new ByteBuffersDirectory();
-    IndexingService.createJoinIndex(matcher, tempIucnIndex, iucnIndex, true, true, false, 1, 100);
+    IndexingService.createJoinIndex(matcher, List.of(
+      NameUsage.builder().id("iucn-1").scientificName("Panicum repens L.").status(TaxonomicStatus.ACCEPTED.toString()).rank(Rank.SPECIES.toString()).category("vulnerable").build()
+    ), iucnIndex, true, true, 1, 100);
     Dataset iucn = Dataset.builder().build();
     iucn.setClbKey(2);
     iucn.setAlias("IUCN");
