@@ -607,7 +607,8 @@ public class IndexingService {
             doc.get(FIELD_ACCEPTED_ID),
             doc.get(FIELD_RANK),
             doc.get(FIELD_STATUS),
-            doc.get(FIELD_CANONICAL_NAME));
+            doc.get(FIELD_CANONICAL_NAME),
+            doc.get(FIELD_FORMATTED));
         } catch (Exception e) {
           log.error("Skipping usage {} {}: {}", u.getId(), u.getScientificName(), e.toString());
         }
@@ -638,7 +639,7 @@ public class IndexingService {
     if (!taxonomy.ids[i].equals(u.getId())) {
       throw new IllegalStateException("Source changed between reads at row " + i + ": " + u.getId() + " != " + taxonomy.ids[i]);
     }
-    return toDoc(u);
+    return toDoc(u, taxonomy.canonicals[i], taxonomy.formatted[i]);
   }
 
   /**
@@ -921,7 +922,6 @@ public class IndexingService {
    */
   protected static Document toDoc(NameUsage nameUsage) {
 
-    Document doc = new Document();
     /*
      Porting notes: The canonical name *sensu strictu* with nothing else but three name parts at
      most (genus, species, infraspecific). No rank or hybrid markers and no authorship,
@@ -945,13 +945,13 @@ public class IndexingService {
       log.debug("Unable to parse name to create canonical: {}", nameUsage.getScientificName());
     }
 
+    String formattedName = null;
     if (pn != null){
       try {
-        var formattedName = NameFormatter.canonicalCompleteHtml(pn);
+        formattedName = NameFormatter.canonicalCompleteHtml(pn);
         if (StringUtils.isNotBlank(nameUsage.getAuthorship())) {
           formattedName += " " + nameUsage.getAuthorship();
         }
-        doc.add(new StringField(FIELD_FORMATTED, formattedName, Field.Store.YES));
       } catch (Exception e) {
         // do nothing
         log.debug("Unable to parse name to create canonical: {}", nameUsage.getScientificName());
@@ -959,6 +959,14 @@ public class IndexingService {
     }
 
     final String canonical = optCanonical.orElse(nameUsage.getScientificName());
+    return toDoc(nameUsage, canonical, formattedName);
+  }
+
+  private static Document toDoc(NameUsage nameUsage, String canonical, String formattedName) {
+    Document doc = new Document();
+    if (formattedName != null) {
+      doc.add(new StringField(FIELD_FORMATTED, formattedName, Field.Store.YES));
+    }
 
     // use custom precision step as we do not need range queries and prefer to save memory usage
     // instead

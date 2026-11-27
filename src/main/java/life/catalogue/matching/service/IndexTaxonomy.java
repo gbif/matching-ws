@@ -32,13 +32,22 @@ final class IndexTaxonomy {
   private static final String INCERTAE_SEDIS = "incertae sedis";
 
   /** The values of one row that the tree needs, taken from its Lucene document. */
-  record Row(String id, String parentId, String acceptedId, String rank, String status, String canonical) {}
+  record Row(
+    String id,
+    String parentId,
+    String acceptedId,
+    String rank,
+    String status,
+    String canonical,
+    String formatted
+  ) {}
 
   final int size;
   final String[] ids;
   final String[] ranks;
   final String[] statuses;
   final String[] canonicals;
+  final String[] formatted;
   final int[] parent;
   final int[] accepted;
   private final Map<String, Integer> firstIndex;
@@ -57,6 +66,7 @@ final class IndexTaxonomy {
     ranks = new String[size];
     statuses = new String[size];
     canonicals = new String[size];
+    formatted = new String[size];
     parent = new int[size];
     accepted = new int[size];
     firstIndex = new HashMap<>(Math.max(16, (int) (size / 0.75f) + 1));
@@ -70,6 +80,7 @@ final class IndexTaxonomy {
       ranks[i] = r.rank() == null ? null : vocab.computeIfAbsent(r.rank(), v -> v);
       statuses[i] = r.status() == null ? null : vocab.computeIfAbsent(r.status(), v -> v);
       canonicals[i] = r.canonical();
+      formatted[i] = r.formatted();
       firstIndex.putIfAbsent(r.id(), i);
     }
 
