@@ -375,7 +375,8 @@ public class IndexingService {
 
     writeCLBToFile(datasetKey);
     indexFile(exportPath  + "/" + datasetKey, tempIndexPath + "/" + datasetKey);
-    writeJoinIndex( tempIndexPath + "/"  + datasetKey, joinIndexPath, false);
+    // identifiers must resolve to the very usage they denote, including synonyms
+    writeJoinIndex( tempIndexPath + "/"  + datasetKey, joinIndexPath, false, false);
   }
 
   @Transactional
@@ -391,7 +392,8 @@ public class IndexingService {
     }
     writeCLBIUCNToFile(datasetKey);
     indexFile(exportPath  + "/" + datasetKey, tempIndexPath + "/" + datasetKey);
-    writeJoinIndex( tempIndexPath + "/" + datasetKey, joinIndexPath, true);
+    // ancillary status is looked up per accepted taxon, so collapse synonym matches to the accepted usage
+    writeJoinIndex( tempIndexPath + "/" + datasetKey, joinIndexPath, true, true);
   }
 
   private static boolean indexExists(String joinIndexPath) throws IOException {
@@ -568,8 +570,11 @@ public class IndexingService {
    * @param tempNameUsageIndexPath  the temp index directory to use
    * @param joinIndexPath the directory to write the join index to
    * @param acceptedOnly if true only accepted taxa are indexed
+   * @param joinToAccepted if true a source name matching a synonym in the main index is joined to
+   *                       the accepted usage instead of the synonym itself
    */
-  private void writeJoinIndex(String tempNameUsageIndexPath, String joinIndexPath, boolean acceptedOnly) {
+  private void writeJoinIndex(String tempNameUsageIndexPath, String joinIndexPath, boolean acceptedOnly,
+                              boolean joinToAccepted) {
 
     try {
       // Load temp index directory
@@ -580,7 +585,7 @@ public class IndexingService {
       Directory ancillaryDirectory = FSDirectory.open(indexDirectory);
 
       // create the join index
-      Long[] counters = createJoinIndex(matchingService, tempDirectory, ancillaryDirectory, acceptedOnly, true, indexingThreads, indexingBatchSize);
+      Long[] counters = createJoinIndex(matchingService, tempDirectory, ancillaryDirectory, acceptedOnly, joinToAccepted, true, indexingThreads, indexingBatchSize);
 
       // load export metadata
       ObjectMapper mapper = new ObjectMapper();
@@ -606,6 +611,8 @@ public class IndexingService {
    * @param tempUsageIndexDirectory the temp index directory to use
    * @param outputDirectory the directory to write the join index to
    * @param acceptedOnly if true only accepted taxa are indexed
+   * @param joinToAccepted if true a source name matching a synonym in the main index is joined to
+   *                       the accepted usage instead of the synonym itself
    * @param closeDirectoryOnExit if true the output directory will be closed on exit
    * @param indexingThreads the number of threads to use for indexing
    * @return an array containing the number of documents indexed and the number of documents matched to the main index
@@ -615,6 +622,7 @@ public class IndexingService {
                                        Directory tempUsageIndexDirectory,
                                        Directory outputDirectory,
                                        boolean acceptedOnly,
+                                       boolean joinToAccepted,
                                        boolean closeDirectoryOnExit,
                                        int indexingThreads,
                                        int indexingBatchSize)
@@ -649,13 +657,13 @@ public class IndexingService {
       if (batch.size() >= indexingBatchSize) {
         log.info("Starting batch: {} taxa", counter.get());
         List<Document> finalBatch = batch;
-        exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, finalBatch, acceptedOnly, matchedCounter));
+        exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, finalBatch, acceptedOnly, joinToAccepted, matchedCounter));
         batch = new ArrayList<>();
       }
     }
 
     //final batch
-    exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, batch, acceptedOnly, matchedCounter));
+    exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, batch, acceptedOnly, joinToAccepted, matchedCounter));
 
     log.info("Finished reading CSV file. Creating join index...");
 
@@ -754,15 +762,17 @@ public class IndexingService {
     private final List<Document> docs;
     private final IndexSearcher searcher;
     private final boolean acceptedOnly;
+    private final boolean joinToAccepted;
     private final MatchingService matchingService;
     private final AtomicLong matchedCounter;
 
     public JoinIndexTask(MatchingService matchingService, IndexSearcher searcher, IndexWriter writer, List<Document> docs,
-                         boolean acceptedOnly, AtomicLong matchedCounter) {
+                         boolean acceptedOnly, boolean joinToAccepted, AtomicLong matchedCounter) {
       this.searcher = searcher;
       this.writer = writer;
       this.docs = docs;
       this.acceptedOnly = acceptedOnly;
+      this.joinToAccepted = joinToAccepted;
       this.matchingService = matchingService;
       this.matchedCounter = matchedCounter;
     }
@@ -811,7 +821,8 @@ public class IndexingService {
                           rank, scientificName, id, matchedCanonical, canonical, matchedRank, rank.name());
                 } else {
                   doc.add(new StringField(FIELD_JOIN_ID,
-                          nameUsageMatch.getAcceptedUsage() != null ? nameUsageMatch.getAcceptedUsage().getKey() :
+                          joinToAccepted && nameUsageMatch.getAcceptedUsage() != null ?
+                                  nameUsageMatch.getAcceptedUsage().getKey() :
                                   nameUsageMatch.getUsage().getKey(), Field.Store.YES)
                   );
                   writer.addDocument(doc);

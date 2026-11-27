@@ -261,6 +261,15 @@ public class DatasetIndex {
     }
   }
 
+  public void initWithAncillaryDir(Dataset dataset, Directory indexDirectory) {
+    try {
+      DirectoryReader reader = DirectoryReader.open(indexDirectory);
+      this.ancillarySearchers.put(dataset, new IndexSearcher(reader));
+    } catch (IOException e) {
+      log.warn("Cannot open lucene index. Index not available", e);
+    }
+  }
+
   /**
    * Returns the metadata of the index. This includes the number of taxa, the size on disk, the
    * dataset title and key, and the build information.
@@ -881,18 +890,18 @@ public class DatasetIndex {
 
     u.setUsage(constructUsage(doc));
 
-    // environments are a property of the accepted taxon
-    Document environmentsDoc = doc;
+    // environments and ancillary status like IUCN are properties of the accepted taxon
+    Document acceptedDoc = doc;
     if (doc.get(FIELD_ACCEPTED_ID) != null) {
       synonym = true;
       Optional<Document> accDocOpt = getByUsageKey(doc.get(FIELD_ACCEPTED_ID));
       if (accDocOpt.isPresent()) {
         Document accDoc = accDocOpt.get();
         u.setAcceptedUsage(constructUsage(accDoc));
-        environmentsDoc = accDoc;
+        acceptedDoc = accDoc;
       }
     }
-    String[] environments = environmentsDoc.getValues(FIELD_ENVIRONMENTS);
+    String[] environments = acceptedDoc.getValues(FIELD_ENVIRONMENTS);
     if (environments.length > 0) {
       u.setEnvironments(Arrays.asList(environments));
     }
@@ -918,10 +927,11 @@ public class DatasetIndex {
 
     u.setSynonym(synonym);
 
-    // if ancillary join indexes are present, add them to the match
+    // if ancillary join indexes are present, add them to the match.
+    // They are joined to accepted usages only, so synonyms use the status of their accepted taxon.
     for (Dataset dataset: ancillarySearchers.keySet()){
       IndexSearcher ancillarySearcher = ancillarySearchers.get(dataset);
-      Query query = new TermQuery(new Term(FIELD_JOIN_ID, doc.get(FIELD_ID)));
+      Query query = new TermQuery(new Term(FIELD_JOIN_ID, acceptedDoc.get(FIELD_ID)));
       try {
         TopDocs docs = ancillarySearcher.search(query, 3);
         boolean isIUCNSet = false;
