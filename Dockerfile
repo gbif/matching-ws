@@ -51,8 +51,6 @@ CMD java $JVM_OPTIONS \
     --add-opens=java.base/java.io=ALL-UNNAMED \
     --add-opens=java.base/java.util=ALL-UNNAMED \
     --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
-    --add-opens=jdk.compiler/com.sun.tools.javac=ALL-UNNAMED \
-    --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
     -jar app.jar \
     --server.servlet.context-path=$SERVLET_CONTEXT_PATH \
     --server.port=$SERVER_PORT \
