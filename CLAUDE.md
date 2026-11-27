@@ -46,8 +46,18 @@ java --enable-native-access=ALL-UNNAMED -jar target/matching-ws-*-exec.jar --mod
 
 `life.catalogue.matching.util.NameParsers` wraps the shared parser. Since name-parser 5.0.0 there is
 no pure-Java implementation, no parser cache/timeout and no `ParserConfig` to load from
-ChecklistBank. `parse()` returns a `ParseResult` — `Parsed`, `Informal` or `Unparsable` — instead of
-throwing; use `NameParsers.parseOrNull(..)` when you just want a `ParsedName` or null.
+ChecklistBank. `parse()` returns a `ParseResult` — `Parsed` or `Unparsable` — instead of throwing.
+Since name-parser 6 informal names ("Abies sp.", "Abies cf. alba") and anchored placeholders
+("Asteraceae incertae sedis") are `Parsed` names of type `INFORMAL` / `PLACEHOLDER`:
+
+- `NameParsers.parseOrNull(..)` returns null for them, so the index and author comparisons use the
+  verbatim name and such usages never compete with the real taxon they hang off.
+- Non-strict queries match their `ParsedName.anchor()` instead, always reported as `HIGHERRANK`
+  (`MatchingService.matchByClassification`). Anchors in `IGNORED_ANCHORS` (Biota, the CoL root but a
+  conifer genus in the indexes) are not used.
+
+Name parser versions (`name-parser.version`, `name-parser-rust.version`) come from the CoL motherpom,
+via its parent `clb-bom`, and follow `col.version`.
 
 The cdylib ships in per-platform classifier JARs (`native/<os.detected.classifier>/`). The pom pins
 `linux-x86_64` + `linux-aarch_64` so one `-exec.jar` works in both docker images, and a mac profile
