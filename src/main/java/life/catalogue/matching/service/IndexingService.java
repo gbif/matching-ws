@@ -25,15 +25,12 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
@@ -48,11 +45,9 @@ import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
-import org.apache.lucene.search.*;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.BytesRef;
 import jakarta.validation.constraints.NotNull;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.beans.factory.annotation.Value;
@@ -91,9 +86,6 @@ public class IndexingService {
   @Value("${export.path:/tmp/matching-export}")
   String exportPath;
 
-  @Value("${temp.path:/tmp/matching-tmp}")
-  String tempIndexPath;
-
   @Value("${clb.url:jdbc:postgresql://localhost:5432/clb}")
   String clbUrl;
 
@@ -118,6 +110,7 @@ public class IndexingService {
 
   private static final String REL_PATTERN_STR = "(\\d+)(?:LX?RC?|R(\\d+))";
   private static final Pattern REL_PATTERN = Pattern.compile("^" + REL_PATTERN_STR + "$");
+  private static final Pattern SLASHES = Pattern.compile("[/\\\\]");
 
   protected static final ScientificNameAnalyzer scientificNameAnalyzer = new ScientificNameAnalyzer();
 
@@ -134,6 +127,7 @@ public class IndexingService {
     IndexWriterConfig config = new IndexWriterConfig(aWrapper);
     config.setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH);
     config.setRAMBufferSizeMB(256.0);
+    config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
     return config;
   }
 
@@ -358,7 +352,7 @@ public class IndexingService {
     if (name.getRank() == null) {
       name.setRank(Rank.UNRANKED.toString());
     }
-    name.setScientificName(name.getScientificName().replaceAll("[/\\\\]", "").trim());
+    name.setScientificName(SLASHES.matcher(name.getScientificName()).replaceAll("").trim());
     return name;
   }
 
@@ -374,9 +368,8 @@ public class IndexingService {
     }
 
     writeCLBToFile(datasetKey);
-    indexFile(exportPath  + "/" + datasetKey, tempIndexPath + "/" + datasetKey);
     // identifiers must resolve to the very usage they denote, including synonyms
-    writeJoinIndex( tempIndexPath + "/"  + datasetKey, joinIndexPath, false, false);
+    writeJoinIndex(exportPath + "/" + datasetKey, joinIndexPath, false, false);
   }
 
   @Transactional
@@ -391,9 +384,8 @@ public class IndexingService {
       return;
     }
     writeCLBIUCNToFile(datasetKey);
-    indexFile(exportPath  + "/" + datasetKey, tempIndexPath + "/" + datasetKey);
     // ancillary status is looked up per accepted taxon, so collapse synonym matches to the accepted usage
-    writeJoinIndex( tempIndexPath + "/" + datasetKey, joinIndexPath, true, true);
+    writeJoinIndex(exportPath + "/" + datasetKey, joinIndexPath, true, true);
   }
 
   private static boolean indexExists(String joinIndexPath) throws IOException {
@@ -508,6 +500,148 @@ public class IndexingService {
     }
   }
 
+  /** Reads name usages from a source, in the same order every time it is called. */
+  @FunctionalInterface
+  interface UsageSource {
+    void forEach(Consumer<NameUsage> consumer) throws IOException;
+  }
+
+  @FunctionalInterface
+  interface BatchTask<R> {
+    R run(int offset, List<NameUsage> batch) throws Exception;
+  }
+
+  static UsageSource csvSource(String filePath) {
+    return consumer -> {
+      try (Reader reader = new BufferedReader(new FileReader(filePath), 1 << 16)) {
+        @SuppressWarnings("unchecked")
+        CsvToBean<NameUsage> csvReader = new CsvToBeanBuilder<NameUsage>(reader)
+          .withType(NameUsage.class)
+          .withSeparator('$')
+          .withMultilineLimit(1)
+          .withIgnoreLeadingWhiteSpace(true)
+          .withIgnoreEmptyLine(true)
+          .build();
+        csvReader.iterator().forEachRemaining(consumer);
+      }
+    };
+  }
+
+  @SafeVarargs
+  static UsageSource iterableSource(Iterable<NameUsage>... usages) {
+    return consumer -> {
+      for (var iter : usages) {
+        for (NameUsage u : iter) {
+          if (u != null && u.getId() != null) {
+            consumer.accept(u);
+          }
+        }
+      }
+    };
+  }
+
+  /**
+   * Reads the source on the calling thread and runs the task on batches of it in parallel.
+   * Any failing batch fails the whole run.
+   *
+   * @return the task results in source order
+   */
+  static <R> List<R> runBatches(UsageSource source, int threads, int batchSize, String label, BatchTask<R> task)
+    throws IOException {
+    ThreadPoolExecutor exec = new ThreadPoolExecutor(threads, threads,
+      0L, TimeUnit.MILLISECONDS,
+      new ArrayBlockingQueue<>(threads * 2),
+      new ThreadPoolExecutor.CallerRunsPolicy());
+    List<Future<R>> futures = new ArrayList<>();
+    try {
+      final List<NameUsage>[] batch = new List[]{new ArrayList<>(batchSize)};
+      final int[] offset = {0};
+      source.forEach(u -> {
+        batch[0].add(u);
+        if (batch[0].size() >= batchSize) {
+          futures.add(submit(exec, task, offset[0], batch[0]));
+          offset[0] += batch[0].size();
+          batch[0] = new ArrayList<>(batchSize);
+          if (futures.size() % 10 == 0) {
+            log.info("{} - read {} usages", label, offset[0]);
+          }
+        }
+      });
+      if (!batch[0].isEmpty()) {
+        futures.add(submit(exec, task, offset[0], batch[0]));
+      }
+      List<R> results = new ArrayList<>(futures.size());
+      for (Future<R> f : futures) {
+        results.add(f.get());
+      }
+      return results;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IOException(label + " interrupted", e);
+    } catch (ExecutionException e) {
+      throw new IOException(label + " failed: " + e.getCause().getMessage(), e.getCause());
+    } finally {
+      exec.shutdownNow();
+    }
+  }
+
+  private static <R> Future<R> submit(ExecutorService exec, BatchTask<R> task, int offset, List<NameUsage> batch) {
+    return exec.submit(() -> task.run(offset, batch));
+  }
+
+  /**
+   * First pass over a source: parses every name and keeps what is needed to resolve the tree in memory.
+   * Rows that cannot be converted to a document are logged and left out.
+   */
+  static IndexTaxonomy readTaxonomy(UsageSource source, int threads, int batchSize) throws IOException {
+    StopWatch watch = StopWatch.createStarted();
+    List<List<IndexTaxonomy.Row>> batches = runBatches(source, threads, batchSize, "Reading taxonomy", (offset, usages) -> {
+      List<IndexTaxonomy.Row> rows = new ArrayList<>(usages.size());
+      for (NameUsage u : usages) {
+        IndexTaxonomy.Row row = null;
+        try {
+          Document doc = toDoc(u);
+          row = new IndexTaxonomy.Row(
+            doc.get(FIELD_ID),
+            doc.get(FIELD_PARENT_ID),
+            doc.get(FIELD_ACCEPTED_ID),
+            doc.get(FIELD_RANK),
+            doc.get(FIELD_STATUS),
+            doc.get(FIELD_CANONICAL_NAME),
+            doc.get(FIELD_FORMATTED));
+        } catch (Exception e) {
+          log.error("Skipping usage {} {}: {}", u.getId(), u.getScientificName(), e.toString());
+        }
+        rows.add(row);
+      }
+      return rows;
+    });
+    List<IndexTaxonomy.Row> rows = new ArrayList<>();
+    batches.forEach(rows::addAll);
+    batches.clear();
+    IndexTaxonomy taxonomy = new IndexTaxonomy(rows);
+    log.info("Taxonomy of {} usages loaded in {} s", taxonomy.size, watch.getTime(TimeUnit.SECONDS));
+    return taxonomy;
+  }
+
+  /**
+   * Converts a usage in the second pass, checking that the source is still aligned with the taxonomy.
+   *
+   * @return the document or null if the row was left out in the first pass
+   */
+  private static Document toDocAligned(IndexTaxonomy taxonomy, int i, NameUsage u) {
+    if (i >= taxonomy.size) {
+      throw new IllegalStateException("Source has more usages than on the first read: " + i);
+    }
+    if (taxonomy.ids[i] == null) {
+      return null;
+    }
+    if (!taxonomy.ids[i].equals(u.getId())) {
+      throw new IllegalStateException("Source changed between reads at row " + i + ": " + u.getId() + " != " + taxonomy.ids[i]);
+    }
+    return toDoc(u, taxonomy.canonicals[i], taxonomy.formatted[i]);
+  }
+
   /**
    * Indexes a set of name usages into a new Lucene index in memory.
    * Only used for testing purposes.
@@ -515,527 +649,243 @@ public class IndexingService {
    * @param usages the name usages to index
    * @throws IOException if an error occurs during indexing
    */
+  @SafeVarargs
   public static Directory newMemoryIndex(Iterable<NameUsage>... usages) throws IOException {
     log.info("Start building a new RAM index");
-    Directory tempDir = new ByteBuffersDirectory();
-    IndexWriter writer = getIndexWriter(tempDir);
-
-    Directory tempNestedDir = new ByteBuffersDirectory();
-    IndexWriter nestedWriter = getIndexWriter(tempNestedDir);
-
-    // creates initial index segments
-    writer.commit();
-    for (var iter : usages) {
-      for (NameUsage u : iter) {
-        if (u != null && u.getId() != null) {
-          writer.addDocument(toDoc(u));
-        }
-      }
-    }
-    writer.close();
-    nestedWriter.close();
-
-    // de-normalise
-    IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(tempDir));
-    IndexSearcher nestedSearcher = new IndexSearcher(DirectoryReader.open(tempNestedDir));
-    TopDocs results = searcher.search(new MatchAllDocsQuery(), Integer.MAX_VALUE);
-    ScoreDoc[] hits = results.scoreDocs;
-
-    Directory denormedDir = new ByteBuffersDirectory();
-    IndexWriter denormedWriter = getIndexWriter(denormedDir);
-    IOUtil ioUtil = new IOUtil();
-
-    List<Document> batch = new ArrayList<>();
-    for (ScoreDoc hit : hits) {
-      batch.add(searcher.storedFields().document(hit.doc));
-    }
-    new DenormIndexTask(searcher, nestedSearcher, denormedWriter, ioUtil, batch).run();
-
-    // optimize the index
-    denormedWriter.flush();
-    denormedWriter.commit();
-    denormedWriter.close();
-
-    return denormedDir;
-  }
-
-  private static IndexWriter getIndexWriter(Directory dir) throws IOException {
-    return new IndexWriter(dir, getIndexWriterConfig());
+    Directory dir = new ByteBuffersDirectory();
+    buildMainIndex(iterableSource(usages), dir, new IOUtil(), 1, 10_000);
+    return dir;
   }
 
   /**
-   * Creates a join index from a temp index and the main index. Essentially the same as the temp index with an
-   * additional field that links to the main index.
+   * Builds the main index in a single write: the tree is read into memory first, then every usage is
+   * written once with its stored classification and nested set range.
    *
-   * @param tempNameUsageIndexPath  the temp index directory to use
+   * @return the number of documents written
+   */
+  static long buildMainIndex(UsageSource source, Directory directory, IOUtil ioUtil, int threads, int batchSize)
+    throws IOException {
+    IndexTaxonomy taxonomy = readTaxonomy(source, threads, batchSize);
+
+    StopWatch watch = StopWatch.createStarted();
+    taxonomy.computeNestedSets();
+    log.info("Nested sets computed in {} s", watch.getTime(TimeUnit.SECONDS));
+
+    watch = StopWatch.createStarted();
+    AtomicLong written = new AtomicLong();
+    try (IndexWriter writer = new IndexWriter(directory, getIndexWriterConfig())) {
+      runBatches(source, threads, batchSize, "Writing main index", (offset, usages) -> {
+        for (int k = 0; k < usages.size(); k++) {
+          int i = offset + k;
+          Document doc = toDocAligned(taxonomy, i, usages.get(k));
+          if (doc == null) continue;
+          long[] nested = taxonomy.nestedSetFor(i);
+          if (nested != null) {
+            doc.add(new LongField(FIELD_LEFT_NESTED_SET_ID, nested[0], Field.Store.YES));
+            doc.add(new LongField(FIELD_RIGHT_NESTED_SET_ID, nested[1], Field.Store.YES));
+          }
+          ioUtil.serialiseField(doc, FIELD_CLASSIFICATION, taxonomy.classification(i));
+          writer.addDocument(doc);
+          written.incrementAndGet();
+        }
+        return null;
+      });
+      log.info("Main index documents written in {} s", watch.getTime(TimeUnit.SECONDS));
+      finishIndex(writer);
+    }
+    log.info("Main index complete: {} documents, {} s", written.get(), watch.getTime(TimeUnit.SECONDS));
+    return written.get();
+  }
+
+  /**
+   * Creates a join index from a set of name usages, matching each one to the main index.
+   * Only used for testing purposes.
+   *
+   * @see #createJoinIndex(MatchingService, UsageSource, Directory, boolean, boolean, int, int)
+   */
+  public static Long[] createJoinIndex(MatchingService matchingService,
+                                       Iterable<NameUsage> usages,
+                                       Directory outputDirectory,
+                                       boolean acceptedOnly,
+                                       boolean joinToAccepted,
+                                       int indexingThreads,
+                                       int indexingBatchSize) throws IOException {
+    return createJoinIndex(matchingService, iterableSource(usages), outputDirectory, acceptedOnly, joinToAccepted,
+      indexingThreads, indexingBatchSize);
+  }
+
+  /**
+   * Creates a join index: the usages of a source checklist that match the main index, each with an
+   * additional field that links to the matched main index usage.
+   *
+   * @param matchingService the matching service to use
+   * @param source the usages of the source checklist
+   * @param outputDirectory the directory to write the join index to
+   * @param acceptedOnly if true only accepted taxa are indexed
+   * @param joinToAccepted if true a source name matching a synonym in the main index is joined to
+   *                       the accepted usage instead of the synonym itself
+   * @param indexingThreads the number of threads to use for matching
+   * @return an array containing the number of documents read and the number of documents matched to the main index
+   * @throws IOException if the index cannot be created
+   */
+  static Long[] createJoinIndex(MatchingService matchingService,
+                                UsageSource source,
+                                Directory outputDirectory,
+                                boolean acceptedOnly,
+                                boolean joinToAccepted,
+                                int indexingThreads,
+                                int indexingBatchSize) throws IOException {
+
+    IndexTaxonomy taxonomy = readTaxonomy(source, indexingThreads, indexingBatchSize);
+
+    StopWatch watch = StopWatch.createStarted();
+    AtomicLong counter = new AtomicLong(0);
+    AtomicLong matchedCounter = new AtomicLong(0);
+    try (IndexWriter writer = new IndexWriter(outputDirectory, getIndexWriterConfig())) {
+      runBatches(source, indexingThreads, indexingBatchSize, "Creating join index", (offset, usages) -> {
+        for (int k = 0; k < usages.size(); k++) {
+          int i = offset + k;
+          Document doc = toDocAligned(taxonomy, i, usages.get(k));
+          if (doc == null) continue;
+          counter.incrementAndGet();
+          if (joinDoc(matchingService, taxonomy, i, doc, acceptedOnly, joinToAccepted)) {
+            writer.addDocument(doc);
+            matchedCounter.incrementAndGet();
+          }
+        }
+        return null;
+      });
+      finishIndex(writer);
+    }
+    log.info("Join index complete: {} documents, {} matched, {} s", counter.get(), matchedCounter.get(),
+      watch.getTime(TimeUnit.SECONDS));
+    return new Long[]{counter.get(), matchedCounter.get()};
+  }
+
+  /**
+   * Matches a source usage to the main index and adds the join field to its document.
+   *
+   * @return true if the document matched and should be indexed
+   */
+  private static boolean joinDoc(MatchingService matchingService, IndexTaxonomy taxonomy, int i, Document doc,
+                                 boolean acceptedOnly, boolean joinToAccepted) {
+    String id = doc.get(FIELD_ID);
+    String status = doc.get(FIELD_STATUS);
+    if (acceptedOnly && !TaxonomicStatus.ACCEPTED.name().equals(status)) {
+      // skip synonyms, otherwise we would index them twice
+      return false;
+    }
+    String scientificName = doc.get(FIELD_SCIENTIFIC_NAME);
+    String canonical = doc.get(FIELD_CANONICAL_NAME);
+    try {
+      Rank rank = Rank.valueOf(doc.get(FIELD_RANK).toUpperCase());
+      Map<String, String> hierarchy = taxonomy.rankedHierarchy(i);
+      ClassificationQuery classification = new ClassificationQuery();
+      classification.setKingdom(hierarchy.getOrDefault(Rank.KINGDOM.name(), ""));
+      classification.setPhylum(hierarchy.getOrDefault(Rank.PHYLUM.name(), ""));
+      classification.setClazz(hierarchy.getOrDefault(Rank.CLASS.name(), ""));
+      classification.setOrder(hierarchy.getOrDefault(Rank.ORDER.name(), ""));
+      classification.setFamily(hierarchy.getOrDefault(Rank.FAMILY.name(), ""));
+      classification.setGenus(hierarchy.getOrDefault(Rank.GENUS.name(), ""));
+      classification.setSpecies(hierarchy.getOrDefault(Rank.SPECIES.name(), ""));
+
+      // use strict matching for classification to classification matching
+      NameUsageMatch nameUsageMatch = matchingService.match(scientificName, rank, classification, true);
+      if (nameUsageMatch.getUsage() == null) {
+        log.info("No match for {} {} # {}", rank, scientificName, id);
+        return false;
+      }
+      if (nameUsageMatch.getDiagnostics().getMatchType() == MatchType.HIGHERRANK) {
+        log.info("Ignoring higher match for {} {} # {}", rank, scientificName, id);
+        return false;
+      }
+
+      var acceptedUsage = nameUsageMatch.getAcceptedUsage();
+      String matchedCanonical = acceptedUsage != null && acceptedUsage.getCanonicalName() != null ?
+        acceptedUsage.getCanonicalName() : nameUsageMatch.getUsage().getCanonicalName();
+      String matchedRank = acceptedUsage != null && acceptedUsage.getRank() != null ?
+        acceptedUsage.getRank().name() : nameUsageMatch.getUsage().getRank().name();
+      if (matchedCanonical == null) {
+        return false;
+      }
+      if (acceptedOnly && (!matchedCanonical.equals(canonical) || !matchedRank.equals(rank.name()))) {
+        log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and ranks do not match {} != {} and acceptedOnly is true",
+          rank, scientificName, id, matchedCanonical, canonical, matchedRank, rank.name());
+        return false;
+      }
+      doc.add(new StringField(FIELD_JOIN_ID,
+        joinToAccepted && acceptedUsage != null ? acceptedUsage.getKey() : nameUsageMatch.getUsage().getKey(),
+        Field.Store.YES));
+      return true;
+    } catch (Exception e) {
+      log.error("Problem matching name from " + ANCILLARY_DIR + " index {}: {}", scientificName, e.getMessage(), e);
+      return false;
+    }
+  }
+
+  /**
+   * Writes a join index for an exported checklist. Failures are logged and do not stop the service.
+   *
+   * @param exportDir the directory of the exported CSV and its metadata
    * @param joinIndexPath the directory to write the join index to
    * @param acceptedOnly if true only accepted taxa are indexed
    * @param joinToAccepted if true a source name matching a synonym in the main index is joined to
    *                       the accepted usage instead of the synonym itself
    */
-  private void writeJoinIndex(String tempNameUsageIndexPath, String joinIndexPath, boolean acceptedOnly,
-                              boolean joinToAccepted) {
-
+  private void writeJoinIndex(String exportDir, String joinIndexPath, boolean acceptedOnly, boolean joinToAccepted) {
     try {
-      // Load temp index directory
-      Directory tempDirectory = FSDirectory.open(Paths.get(tempNameUsageIndexPath));
-
-      // Create ancillary index
       Path indexDirectory = initialiseIndexDirectory(joinIndexPath);
-      Directory ancillaryDirectory = FSDirectory.open(indexDirectory);
+      Long[] counters;
+      try (Directory directory = FSDirectory.open(indexDirectory)) {
+        counters = createJoinIndex(matchingService, csvSource(exportDir + "/" + INDEX_CSV), directory,
+          acceptedOnly, joinToAccepted, indexingThreads, indexingBatchSize);
+      }
 
-      // create the join index
-      Long[] counters = createJoinIndex(matchingService, tempDirectory, ancillaryDirectory, acceptedOnly, joinToAccepted, true, indexingThreads, indexingBatchSize);
-
-      // load export metadata
       ObjectMapper mapper = new ObjectMapper();
-      Dataset metadata = mapper.readValue(
-        new FileReader(tempNameUsageIndexPath + "/" + METADATA_JSON),
-        Dataset.class);
+      Dataset metadata = mapper.readValue(new File(exportDir + "/" + METADATA_JSON), Dataset.class);
       metadata.setTaxonCount(counters[0]);
       metadata.setMatchesToMainIndex(counters[1]);
-
-      // write new metadata with counts
       mapper.writeValue(new File(joinIndexPath + "/" + METADATA_JSON), metadata);
 
-      log.info("Ancillary index written: {} documents, {} matched to " + MAIN_INDEX_DIR + " index", counters[0], counters[1]);
+      log.info("Join index written: {} documents, {} matched to " + MAIN_INDEX_DIR + " index", counters[0], counters[1]);
     } catch (Exception e) {
-      log.error("Error writing documents to " + ANCILLARY_DIR + " index: {}", e.getMessage(), e);
+      log.error("Error writing join index {}: {}", joinIndexPath, e.getMessage(), e);
     }
-  }
-
-  /**
-   * Create a join index from a temp index and the main index
-   *
-   * @param matchingService the matching service to use
-   * @param tempUsageIndexDirectory the temp index directory to use
-   * @param outputDirectory the directory to write the join index to
-   * @param acceptedOnly if true only accepted taxa are indexed
-   * @param joinToAccepted if true a source name matching a synonym in the main index is joined to
-   *                       the accepted usage instead of the synonym itself
-   * @param closeDirectoryOnExit if true the output directory will be closed on exit
-   * @param indexingThreads the number of threads to use for indexing
-   * @return an array containing the number of documents indexed and the number of documents matched to the main index
-   * @throws IOException if the index cannot be created
-   */
-  public static Long[] createJoinIndex(MatchingService matchingService,
-                                       Directory tempUsageIndexDirectory,
-                                       Directory outputDirectory,
-                                       boolean acceptedOnly,
-                                       boolean joinToAccepted,
-                                       boolean closeDirectoryOnExit,
-                                       int indexingThreads,
-                                       int indexingBatchSize)
-    throws IOException {
-
-    IndexWriterConfig config = getIndexWriterConfig();
-    config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-    IndexWriter joinIndexWriter = new IndexWriter(outputDirectory, getIndexWriterConfig());
-
-    // Construct a simple query to get all documents
-    IndexReader tempReader = DirectoryReader.open(tempUsageIndexDirectory);
-    IndexSearcher searcher = new IndexSearcher(tempReader);
-    TopDocs results = searcher.search(new MatchAllDocsQuery(), Integer.MAX_VALUE);
-    ScoreDoc[] hits = results.scoreDocs;
-
-    AtomicLong counter = new AtomicLong(0);
-    AtomicLong matchedCounter = new AtomicLong(0);
-
-    ExecutorService exec = new ThreadPoolExecutor(indexingThreads, indexingThreads,
-      5000L, TimeUnit.MILLISECONDS,
-      new ArrayBlockingQueue<Runnable>(indexingThreads * 2, true),
-      new ThreadPoolExecutor.CallerRunsPolicy());
-
-    List<Document> batch = new ArrayList<>();
-    // Write document data
-    for (ScoreDoc hit : hits) {
-
-      counter.incrementAndGet();
-      Document doc = searcher.storedFields().document(hit.doc);
-      batch.add(doc);
-
-      if (batch.size() >= indexingBatchSize) {
-        log.info("Starting batch: {} taxa", counter.get());
-        List<Document> finalBatch = batch;
-        exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, finalBatch, acceptedOnly, joinToAccepted, matchedCounter));
-        batch = new ArrayList<>();
-      }
-    }
-
-    //final batch
-    exec.submit(new JoinIndexTask(matchingService, searcher, joinIndexWriter, batch, acceptedOnly, joinToAccepted, matchedCounter));
-
-    log.info("Finished reading CSV file. Creating join index...");
-
-    exec.shutdown();
-    try {
-      if (!exec.awaitTermination(60, TimeUnit.MINUTES)) {
-        log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-        exec.shutdownNow();
-      }
-    } catch (InterruptedException var4) {
-      log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-      exec.shutdownNow();
-      Thread.currentThread().interrupt();
-    }
-
-    // close temp
-    tempReader.close();
-    tempUsageIndexDirectory.close();
-
-    // close ancillary
-    joinIndexWriter.commit();
-    joinIndexWriter.forceMerge(1);
-    joinIndexWriter.close();
-
-    if (closeDirectoryOnExit) {
-      outputDirectory.close();
-    }
-
-    return new Long[]{counter.get(), matchedCounter.get()};
-  }
-
-  static class DenormIndexTask implements Runnable {
-    private final IndexWriter writer;
-    private final List<Document> docs;
-    private final IndexSearcher searcher;
-    private final IndexSearcher nestedSearcher;
-    private final IOUtil ioUtil;
-
-    public DenormIndexTask(IndexSearcher searcher, IndexSearcher nestedSearcher, IndexWriter writer, IOUtil ioUtil, List<Document> docs) {
-      this.searcher = searcher;
-      this.nestedSearcher = nestedSearcher;
-      this.writer = writer;
-      this.ioUtil = ioUtil;
-      this.docs = docs;
-    }
-
-    @Override
-    public void run() {
-      try {
-        for (Document doc : docs) {
-          // set the higher classification
-          StoredClassification storedClassification = loadHierarchyWithIDs(searcher, doc);
-
-          addNestedSetIDs(nestedSearcher, doc);
-
-          ioUtil.serialiseField(doc, FIELD_CLASSIFICATION, storedClassification);
-          writer.addDocument(doc);
-        }
-        writer.flush();
-      } catch (Exception e) {
-        log.error("Error writing documents to " + ANCILLARY_DIR + " index: {}", e.getMessage(), e);
-      }
-    }
-
-    private void addNestedSetIDs(IndexSearcher nestedSearcher, Document doc) {
-      try {
-
-        String id = doc.get(FIELD_ID);
-        String parentID = doc.get(FIELD_PARENT_ID);
-        String status = doc.get(FIELD_STATUS);
-        String idToUse = id;
-
-        // if the status is not accepted, use the parent ID (which is the accepted ID)
-        if (status != null && !status.equals(TaxonomicStatus.ACCEPTED.name()) ) {
-          idToUse = parentID;
-        }
-
-        if (idToUse != null) {
-          TopDocs topDocs = nestedSearcher.search(new TermQuery(new Term(FIELD_ID, idToUse)), 1);
-          if (topDocs.totalHits.value > 0) {
-            Document nestedDoc = nestedSearcher.doc(topDocs.scoreDocs[0].doc);
-            doc.add(new LongField(FIELD_LEFT_NESTED_SET_ID, Long.parseLong(nestedDoc.get(FIELD_LEFT_NESTED_SET_ID)), Field.Store.YES));
-            doc.add(new LongField(FIELD_RIGHT_NESTED_SET_ID, Long.parseLong(nestedDoc.get(FIELD_RIGHT_NESTED_SET_ID)), Field.Store.YES));
-          }
-        } else {
-          log.error("Taxon ID {} has status {}, with parentID {}", id, status, parentID);
-        }
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-  }
-
-  static class JoinIndexTask implements Runnable {
-    private final IndexWriter writer;
-    private final List<Document> docs;
-    private final IndexSearcher searcher;
-    private final boolean acceptedOnly;
-    private final boolean joinToAccepted;
-    private final MatchingService matchingService;
-    private final AtomicLong matchedCounter;
-
-    public JoinIndexTask(MatchingService matchingService, IndexSearcher searcher, IndexWriter writer, List<Document> docs,
-                         boolean acceptedOnly, boolean joinToAccepted, AtomicLong matchedCounter) {
-      this.searcher = searcher;
-      this.writer = writer;
-      this.docs = docs;
-      this.acceptedOnly = acceptedOnly;
-      this.joinToAccepted = joinToAccepted;
-      this.matchingService = matchingService;
-      this.matchedCounter = matchedCounter;
-    }
-
-    @Override
-    public void run() {
-      try {
-        for (Document doc : docs) {
-
-          String id = doc.get(FIELD_ID);
-          var rank = Rank.valueOf(doc.get(FIELD_RANK));
-          Map<String, String> hierarchy = loadHierarchy(searcher, id);
-          String scientificName = doc.get(FIELD_SCIENTIFIC_NAME);
-          String canonical = doc.get(FIELD_CANONICAL_NAME);
-          String status = doc.get(FIELD_STATUS);
-          if (acceptedOnly && !isAccepted(status)) {
-            // skip synonyms, otherwise we would index them twice
-            continue;
-          }
-
-          ClassificationQuery classification = new ClassificationQuery();
-          classification.setKingdom(hierarchy.getOrDefault(Rank.KINGDOM.name(), ""));
-          classification.setPhylum(hierarchy.getOrDefault(Rank.PHYLUM.name(), ""));
-          classification.setClazz(hierarchy.getOrDefault(Rank.CLASS.name(), ""));
-          classification.setOrder(hierarchy.getOrDefault(Rank.ORDER.name(), ""));
-          classification.setFamily(hierarchy.getOrDefault(Rank.FAMILY.name(), ""));
-          classification.setGenus(hierarchy.getOrDefault(Rank.GENUS.name(), ""));
-          classification.setSpecies(hierarchy.getOrDefault(Rank.SPECIES.name(), ""));
-
-          // match to main dataset
-          try {
-            // use strict matching for classification to classification matching
-            NameUsageMatch nameUsageMatch = matchingService.match(scientificName, rank, classification, true);
-            if (nameUsageMatch.getUsage() != null && nameUsageMatch.getDiagnostics().getMatchType() == MatchType.HIGHERRANK) {
-              log.info("Ignoring higher match for {} {} # {}", rank, scientificName, id);
-            } else if (nameUsageMatch.getUsage() != null) {
-              String matchedCanonical = nameUsageMatch.getAcceptedUsage() != null && nameUsageMatch.getAcceptedUsage().getCanonicalName() != null ?
-                      nameUsageMatch.getAcceptedUsage().getCanonicalName() : nameUsageMatch.getUsage().getCanonicalName();
-
-              String matchedRank = nameUsageMatch.getAcceptedUsage() != null && nameUsageMatch.getAcceptedUsage().getRank() != null ?
-                      nameUsageMatch.getAcceptedUsage().getRank().name() : nameUsageMatch.getUsage().getRank().name();
-
-              if (matchedCanonical != null){
-                if (acceptedOnly && (!matchedCanonical.equals(canonical) || !matchedRank.equals(rank.name()))) {
-                  log.info("Ignoring match for {} {} # {} because canonicals do not match {} != {} and ranks do not match {} != {} and acceptedOnly is true",
-                          rank, scientificName, id, matchedCanonical, canonical, matchedRank, rank.name());
-                } else {
-                  doc.add(new StringField(FIELD_JOIN_ID,
-                          joinToAccepted && nameUsageMatch.getAcceptedUsage() != null ?
-                                  nameUsageMatch.getAcceptedUsage().getKey() :
-                                  nameUsageMatch.getUsage().getKey(), Field.Store.YES)
-                  );
-                  writer.addDocument(doc);
-                  matchedCounter.incrementAndGet();
-                }
-              }
-
-            } else {
-              log.info("No match for {} {} # {}", rank, scientificName, id);
-            }
-          } catch (Exception e) {
-            log.error("Problem matching name from " + ANCILLARY_DIR + " index " + scientificName, e.getMessage(), e);
-          }
-        }
-        writer.flush();
-      } catch (IOException e) {
-        log.error("Error writing documents to " + ANCILLARY_DIR + " index: {}", e.getMessage(), e);
-      }
-    }
-
-    private boolean isAccepted(String status) {
-      return status != null && status.equals(TaxonomicStatus.ACCEPTED.name());
-    }
-  }
-
-  private static Optional<Document> getById(IndexSearcher searcher, String id) {
-    Query query = new TermQuery(new Term(FIELD_ID, id));
-    try {
-      TopDocs docs = searcher.search(query, 3);
-      if (docs.totalHits.value > 0) {
-        return Optional.of(searcher.storedFields().document(docs.scoreDocs[0].doc));
-      } else {
-        return Optional.empty();
-      }
-    } catch (IOException e) {
-      log.error("Cannot load usage {} from lucene index", id, e);
-    }
-    return Optional.empty();
-  }
-
-  private static Map<String, String> loadHierarchy(IndexSearcher searcher, String id) {
-    Map<String, String> classification = new HashMap<>();
-    while (id != null) {
-      Optional<Document> docOpt = getById(searcher, id);
-      if (docOpt.isEmpty()) {
-        break;
-      }
-      Document doc = docOpt.get();
-      classification.put(doc.get(FIELD_RANK), doc.get(FIELD_CANONICAL_NAME));
-      id = doc.get(FIELD_PARENT_ID);
-    }
-    return classification;
-  }
-
-  public static StoredClassification loadHierarchyWithIDs(IndexSearcher searcher, Document leafDoc) {
-
-    // get leaf node
-    StoredClassification.StoredClassificationBuilder builder = StoredClassification.builder();
-
-    ArrayDeque<StoredName> classification = new ArrayDeque<>();
-    String id = leafDoc.get(FIELD_PARENT_ID);
-    String acceptedId = leafDoc.get(FIELD_ACCEPTED_ID);
-    if (acceptedId != null){
-      id = acceptedId;
-    }
-
-    // get leaf node
-    while (id != null) {
-      Optional<Document> docOpt = getById(searcher, id);
-      if (docOpt.isEmpty()) {
-        break;
-      }
-      Document doc = docOpt.get();
-      classification.addFirst(StoredName.builder()
-        .key(doc.get(FIELD_ID))
-        .rank(doc.get(FIELD_RANK))
-        .name(doc.get(FIELD_CANONICAL_NAME))
-        .build()
-      );
-
-      // for next step
-      id = doc.get(FIELD_PARENT_ID);
-    }
-
-    // add the leaf node
-    if (TaxonomicStatus.ACCEPTED.name().equalsIgnoreCase(leafDoc.get(FIELD_STATUS))
-        || TaxonomicStatus.PROVISIONALLY_ACCEPTED.name().equalsIgnoreCase(leafDoc.get(FIELD_STATUS))
-    ) {
-      classification.addLast(StoredName.builder()
-        .key(leafDoc.get(FIELD_ID))
-        .rank(leafDoc.get(FIELD_RANK))
-        .name(leafDoc.get(FIELD_CANONICAL_NAME))
-        .build()
-      );
-    }
-
-    return builder.names(new ArrayList<>(classification)).build();
   }
 
   @Transactional
   public void createMainIndex(String datasetKey, String gbifDatasetKey) throws Exception {
     final String mainIndexPath = indexPath + "/" + MAIN_INDEX_DIR;
-    final String tempDenormedPath = indexPath + "/denormed";
     if (indexExists(mainIndexPath)){
       log.info("Main index already exists at path {}", mainIndexPath);
       return;
     }
     log.info("Generating index for path {}", mainIndexPath);
     writeCLBToFile(datasetKey, gbifDatasetKey);
-    indexFile(exportPath + "/" + datasetKey, mainIndexPath);
-    denormalizeMainIndex(mainIndexPath, tempDenormedPath);
-  }
 
-  private void nestedSetMainIndex(String mainIndexPath, String nestedTempPath) throws IOException {
-
-    StopWatch watch = new StopWatch();
-    watch.start();
-    log.info("Generating nested set index for main index...");
-    IndexWriterConfig config = getIndexWriterConfig();
-    config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-    Directory mainDirectory = FSDirectory.open(Paths.get(mainIndexPath));
-    IndexReader tempReader = DirectoryReader.open(mainDirectory);
-    IndexWriter nestedIndexWriter = new IndexWriter(FSDirectory.open(Paths.get(nestedTempPath)), getIndexWriterConfig());
-
-    IndexSearcher searcher = new IndexSearcher(tempReader);
-    Query query = new BooleanQuery.Builder()
-      .add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST)
-      .add(new FieldExistsQuery(FIELD_PARENT_ID), BooleanClause.Occur.MUST_NOT).build();
-
-    // Execute search
-    TopDocs topDocs = searcher.search(query, 100);
-    long currentIdx = 1;
-    for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
-      long left = currentIdx;
-      Document rootTaxon = searcher.doc(scoreDoc.doc);
-      if (!rootTaxon.get(FIELD_CANONICAL_NAME).equalsIgnoreCase("incertae sedis")){
-        log.info("[Nested set] Starting Root taxon: " + rootTaxon.get(FIELD_CANONICAL_NAME));
-        currentIdx = nestedSetTaxon(rootTaxon, searcher, nestedIndexWriter, currentIdx, new ArrayList<>(), 0);
-        log.info("[Nested set] Root taxon: " + rootTaxon.get(FIELD_CANONICAL_NAME) + " left: " + left + " right: " + currentIdx);
-      }
+    final String exportDir = exportPath + "/" + datasetKey;
+    // build next to the final location and move into place once complete
+    final String buildPath = indexPath + "/" + MAIN_INDEX_DIR + "-build";
+    StopWatch watch = StopWatch.createStarted();
+    long count;
+    try (Directory directory = FSDirectory.open(initialiseIndexDirectory(buildPath))) {
+      count = buildMainIndex(csvSource(exportDir + "/" + INDEX_CSV), directory, ioUtil, indexingThreads, indexingBatchSize);
     }
+    log.info("Index size on disk: {}", sizeOfDirectoryQuietly(new File(buildPath)));
 
-    // optimize the index
-    finishIndex(nestedIndexWriter);
-    nestedIndexWriter.commit();
-    nestedIndexWriter.close();
-    log.info("Nested set index generated.");
-  }
+    ObjectMapper mapper = new ObjectMapper();
+    Dataset metadata = mapper.readValue(new File(exportDir + "/" + METADATA_JSON), Dataset.class);
+    metadata.setTaxonCount(count);
+    metadata.setMatchesToMainIndex(count);
+    mapper.writeValue(new File(buildPath + "/" + METADATA_JSON), metadata);
 
-  private long nestedSetTaxon(Document doc, IndexSearcher searcher, IndexWriter indexWriter, long currentIndex, List<String> idTracking, int currentDepth) throws IOException {
-
-    String id = doc.get(FIELD_ID);
-
-    if (currentDepth >= 50){
-      log.error("Depth {} to great for taxon {}", currentDepth, id);
-      return currentIndex;
-    }
-
-    String status = doc.get(FIELD_STATUS);
-
-    // if it is a synonym, we avoid recursively looking at child nodes
-    if (status != null && !status.equalsIgnoreCase(TaxonomicStatus.ACCEPTED.name())) {
-      currentIndex ++;
-      Document nestedSet = new Document();
-      nestedSet.add(new StringField(FIELD_ID, id, Field.Store.YES));
-      nestedSet.add(new LongField(FIELD_RIGHT_NESTED_SET_ID, currentIndex, Field.Store.YES));
-      nestedSet.add(new LongField(FIELD_LEFT_NESTED_SET_ID, currentIndex, Field.Store.YES));
-      indexWriter.addDocument(nestedSet);
-      return currentIndex;
-    }
-
-    // find children
-    Query query = new BooleanQuery.Builder()
-      .add(new TermQuery(new Term(FIELD_PARENT_ID, id)), BooleanClause.Occur.MUST).build();
-
-    TopDocs topDocs = searcher.search(query, 5000);
-
-    // store the left index
-    long left = currentIndex;
-
-    List<Document> children = new ArrayList<>();
-
-    // for each child, increment the index and recurse
-    for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
-      Document childDoc = searcher.storedFields().document(scoreDoc.doc);
-      if (!childDoc.get(FIELD_CANONICAL_NAME).equalsIgnoreCase("incertae sedis")
-        && childDoc.get(FIELD_STATUS).equalsIgnoreCase(TaxonomicStatus.ACCEPTED.name())
-      ) {
-        currentIndex++;
-        children.add(childDoc);
-      }
-    }
-
-    // sort before minting ids
-    for (Document child : children.stream().sorted(Comparator.comparing(d -> d.get(FIELD_CANONICAL_NAME))).collect(Collectors.toList())) {
-      currentIndex = nestedSetTaxon(child, searcher, indexWriter, currentIndex, idTracking, currentDepth + 1);
-    }
-
-    long right = currentIndex;
-
-    // add this node to the index
-    Document nestedSet = new Document();
-    nestedSet.add(new StringField(FIELD_ID, id, Field.Store.YES));
-    nestedSet.add(new LongField(FIELD_RIGHT_NESTED_SET_ID, right, Field.Store.YES));
-    nestedSet.add(new LongField(FIELD_LEFT_NESTED_SET_ID, left, Field.Store.YES));
-    indexWriter.addDocument(nestedSet);
-    return right;
+    initialiseIndexDirectory(mainIndexPath);
+    FileUtils.moveDirectory(new File(buildPath), new File(mainIndexPath));
+    log.info("Main index built: {} documents, time taken {} mins", count, watch.getTime(TimeUnit.MINUTES));
   }
 
   /**
-   * Best-effort directory size for diagnostic logging only. A live Lucene index
-   * directory has segment files deleted by background merges while we walk it, so
-   * tolerate files that vanish mid-walk (or a missing dir) instead of failing the build.
+   * Best-effort directory size for diagnostic logging only.
    *
    * @param dir the directory to size
    * @return the directory size in bytes, or -1 if it could not be determined
@@ -1044,192 +894,8 @@ public class IndexingService {
     try {
       return FileUtils.sizeOfDirectory(dir);
     } catch (RuntimeException e) { // UncheckedIOException (file removed mid-walk) / IllegalArgumentException
-      log.warn("Could not determine size of {} (index files changing concurrently): {}", dir, e.toString());
+      log.warn("Could not determine size of {}: {}", dir, e.toString());
       return -1L;
-    }
-  }
-
-  private void denormalizeMainIndex(String mainIndexPath, String denormedTempPath) throws IOException {
-    //generate nested set index
-    nestedSetMainIndex(indexPath + "/" + MAIN_INDEX_DIR, indexPath + "/nested");
-
-    StopWatch watch = new StopWatch();
-    watch.start();
-    log.info("De-normalizing main index...");
-    IndexWriterConfig config = getIndexWriterConfig();
-    config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-    Directory mainDirectory = FSDirectory.open(Paths.get(mainIndexPath));
-    IndexReader tempReader = DirectoryReader.open(mainDirectory);
-    IndexReader nestedSetReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath + "/nested")));
-
-    IndexWriter denormIndexWriter = new IndexWriter(FSDirectory.open(
-      Paths.get(denormedTempPath)), getIndexWriterConfig());
-
-    IndexSearcher searcher = new IndexSearcher(tempReader);
-    IndexSearcher nestedSearcher = new IndexSearcher(nestedSetReader);
-    TopDocs results = searcher.search(new MatchAllDocsQuery(), Integer.MAX_VALUE);
-    ScoreDoc[] hits = results.scoreDocs;
-
-    AtomicLong counter = new AtomicLong(0);
-
-    ExecutorService exec = new ThreadPoolExecutor(indexingThreads, indexingThreads,
-      5000L, TimeUnit.MILLISECONDS,
-      new ArrayBlockingQueue<Runnable>(indexingThreads * 2, true),
-      new ThreadPoolExecutor.CallerRunsPolicy());
-
-    List<Document> batch = new ArrayList<>();
-    // Write document data
-    for (ScoreDoc hit : hits) {
-
-      counter.incrementAndGet();
-      Document doc = searcher.storedFields().document(hit.doc);
-      batch.add(doc);
-
-      if (batch.size() >= 1000) {
-        log.info("De-normalisation - starting batch: {} taxa", counter.get());
-        List<Document> finalBatch = batch;
-        exec.submit(new DenormIndexTask(searcher, nestedSearcher, denormIndexWriter, ioUtil, finalBatch));
-        batch = new ArrayList<>();
-      }
-    }
-
-    //final batch
-    exec.submit(new DenormIndexTask(searcher, nestedSearcher, denormIndexWriter, ioUtil, batch));
-
-    log.info("Finished reading main index file. Finishing denormalisation of index...");
-
-    exec.shutdown();
-    try {
-      if (!exec.awaitTermination(60, TimeUnit.MINUTES)) {
-        log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-        exec.shutdownNow();
-      }
-    } catch (InterruptedException var4) {
-      log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-      exec.shutdownNow();
-      Thread.currentThread().interrupt();
-    }
-
-    // close temp
-    tempReader.close();
-    mainDirectory.close();
-
-    // optimize the index
-    log.info("Disk size before optimisation: {}", sizeOfDirectoryQuietly(new File(denormedTempPath)));
-    finishIndex(denormIndexWriter);
-    denormIndexWriter.commit();
-    log.info("Disk size after optimisation: {}", sizeOfDirectoryQuietly(new File(denormedTempPath)));
-
-    // remove old index, and move new one into place
-    FileUtils.copyFile(new File(mainIndexPath + "/" + METADATA_JSON), new File(denormedTempPath + "/" + METADATA_JSON));
-    FileUtils.deleteDirectory(new File(mainIndexPath));
-    FileUtils.moveDirectory(new File(denormedTempPath), new File(mainIndexPath));
-    FileUtils.deleteDirectory(new File(indexPath + "/nested"));
-
-    watch.stop();
-    log.info("De-normalisation complete: {} documents written, time taken {} mins", counter.get(), watch.getTime(TimeUnit.MINUTES));
-  }
-
-  private void indexFile(String exportPath, String indexPath) throws Exception {
-
-    // Create index directory
-    Path indexDirectory = initialiseIndexDirectory(indexPath);
-    Directory directory = FSDirectory.open(indexDirectory);
-
-    // Create index writer configuration
-    IndexWriterConfig config = getIndexWriterConfig();
-    config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-
-    // Create a session factory
-
-    final AtomicLong counter = new AtomicLong(0);
-    final String filePath = exportPath + "/" + INDEX_CSV;
-    final String metadataPath = exportPath + "/" + METADATA_JSON;
-
-    log.info("Indexing dataset from CSV {} to {}", filePath, indexPath);
-
-    ExecutorService exec = new ThreadPoolExecutor(indexingThreads, indexingThreads,
-      5000L, TimeUnit.MILLISECONDS,
-      new ArrayBlockingQueue<Runnable>(indexingThreads * 2, true), new ThreadPoolExecutor.CallerRunsPolicy());
-
-    try (Reader reader = new FileReader(filePath);
-         IndexWriter indexWriter = new IndexWriter(directory, config)) {
-
-      CsvToBean<NameUsage> csvReader = new CsvToBeanBuilder(reader)
-        .withType(NameUsage.class)
-        .withSeparator('$')
-        .withMultilineLimit(1)
-        .withIgnoreLeadingWhiteSpace(true)
-        .withIgnoreEmptyLine(true)
-        .build();
-
-      Iterator<NameUsage> iterator = csvReader.iterator();
-      List<NameUsage> batch = new ArrayList<>();
-      while (iterator.hasNext()) {
-        NameUsage nameUsage = iterator.next();
-        counter.incrementAndGet();
-        batch.add(nameUsage);
-        if (batch.size() >= indexingBatchSize) {
-          List<NameUsage> finalBatch = batch;
-          exec.submit(new IndexingTask(indexWriter, finalBatch));
-          batch = new ArrayList<>();
-        }
-      }
-
-      //final batch
-      exec.submit(new IndexingTask(indexWriter, batch));
-
-      log.info("Finished reading CSV file. Indexing re" + MAIN_INDEX_DIR + "ing taxa...");
-
-      exec.shutdown();
-      try {
-        if (!exec.awaitTermination(60, TimeUnit.MINUTES)) {
-          log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-          exec.shutdownNow();
-        }
-      } catch (InterruptedException var4) {
-        log.error("Forcing shut down of executor service, pending tasks will be lost! {}", exec);
-        exec.shutdownNow();
-        Thread.currentThread().interrupt();
-      }
-
-      finishIndex(indexWriter);
-    }
-
-    // write metadata file in JSON format
-    log.info("Taxa indexed: {}", counter.get());
-
-    // load export metadata
-    ObjectMapper mapper = new ObjectMapper();
-    Dataset metadata = mapper.readValue(new FileReader(metadataPath), Dataset.class);
-    metadata.setTaxonCount(counter.get());
-    metadata.setMatchesToMainIndex(counter.get());
-
-    // write new metadata with counts
-    mapper.writeValue(new File(indexPath + "/" + METADATA_JSON), metadata);
-  }
-
-  static class IndexingTask implements Runnable {
-    private final IndexWriter writer;
-    private final List<NameUsage> nameUsages;
-
-    public IndexingTask(IndexWriter writer, List<NameUsage> nameUsages) {
-      this.writer = writer;
-      this.nameUsages = nameUsages;
-    }
-
-    @Override
-    public void run() {
-      try {
-        for (NameUsage nameUsage : nameUsages) {
-          Document doc = toDoc(nameUsage);
-          writer.addDocument(doc);
-        }
-        writer.flush();
-        nameUsages.clear();
-      } catch (Exception e) {
-        log.error("Problem writing document to index: {}", e.getMessage(), e);
-      }
     }
   }
 
@@ -1238,6 +904,7 @@ public class IndexingService {
     indexWriter.commit();
     log.info("Optimising index....");
     indexWriter.forceMerge(1);
+    indexWriter.commit();
     log.info("Optimisation complete.");
   }
 
@@ -1255,7 +922,6 @@ public class IndexingService {
    */
   protected static Document toDoc(NameUsage nameUsage) {
 
-    Document doc = new Document();
     /*
      Porting notes: The canonical name *sensu strictu* with nothing else but three name parts at
      most (genus, species, infraspecific). No rank or hybrid markers and no authorship,
@@ -1279,13 +945,13 @@ public class IndexingService {
       log.debug("Unable to parse name to create canonical: {}", nameUsage.getScientificName());
     }
 
+    String formattedName = null;
     if (pn != null){
       try {
-        var formattedName = NameFormatter.canonicalCompleteHtml(pn);
+        formattedName = NameFormatter.canonicalCompleteHtml(pn);
         if (StringUtils.isNotBlank(nameUsage.getAuthorship())) {
           formattedName += " " + nameUsage.getAuthorship();
         }
-        doc.add(new StringField(FIELD_FORMATTED, formattedName, Field.Store.YES));
       } catch (Exception e) {
         // do nothing
         log.debug("Unable to parse name to create canonical: {}", nameUsage.getScientificName());
@@ -1293,6 +959,14 @@ public class IndexingService {
     }
 
     final String canonical = optCanonical.orElse(nameUsage.getScientificName());
+    return toDoc(nameUsage, canonical, formattedName);
+  }
+
+  private static Document toDoc(NameUsage nameUsage, String canonical, String formattedName) {
+    Document doc = new Document();
+    if (formattedName != null) {
+      doc.add(new StringField(FIELD_FORMATTED, formattedName, Field.Store.YES));
+    }
 
     // use custom precision step as we do not need range queries and prefer to save memory usage
     // instead
@@ -1313,7 +987,6 @@ public class IndexingService {
 
     // analyzed name field - this is what we search upon
     doc.add(new TextField(FIELD_CANONICAL_NAME, canonical, Field.Store.YES));
-    doc.add(new SortedDocValuesField(FIELD_CANONICAL_NAME, new BytesRef(canonical)));
 
     // store full name and classification only to return a full match object for hits
     String nameComplete = nameUsage.getScientificName();
@@ -1328,7 +1001,6 @@ public class IndexingService {
 
     if (StringUtils.isNotBlank(nameUsage.getParentId()) && !nameUsage.getParentId().equals(nameUsage.getId())) {
       doc.add(new StringField(FIELD_PARENT_ID, nameUsage.getParentId(), Field.Store.YES));
-      doc.add(new SortedDocValuesField(FIELD_PARENT_ID, new BytesRef(nameUsage.getParentId())));
     }
 
     if (StringUtils.isNotBlank(nameUsage.getCode())) {
