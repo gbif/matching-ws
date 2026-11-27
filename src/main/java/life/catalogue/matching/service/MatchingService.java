@@ -74,6 +74,10 @@ public class MatchingService {
   // near worthless for viruses anyway - they are multi word, so they already collect the +10 below.
   private static final Set<NameType> STRICT_MATCH_TYPES =
       Set.of(NameType.IDENTIFIER, NameType.FORMULA);
+  // Anchors of informal names and placeholders we never match to. Biota is the root of the CoL, "life",
+  // but in the indexes only a conifer genus: 1.4 million GBIF occurrences of "Biota incertae sedis" must not
+  // land on Biota D.Don ex Endl.
+  private static final Set<String> IGNORED_ANCHORS = Set.of("Biota");
   private static final List<Rank> HIGHER_QUERY_RANK =
       List.of(
           Rank.SPECIES, Rank.GENUS,
@@ -480,6 +484,37 @@ public class MatchingService {
     queryNameType = parseResult.type();
     parsedName = NameParsers.parsedName(parseResult);
 
+    // informal names and placeholders hang off a real taxon, "Abies sp." or "Asteraceae incertae sedis".
+    // We match that anchor instead, as a higher rank match. Without an anchor the name stays unparsable.
+    // Strict matching never goes to a higher rank: informal names are matched as they are and placeholders
+    // verbatim.
+    boolean anchored = false;
+    if (parsedName != null && strict && queryNameType == NameType.PLACEHOLDER) {
+      parsedName = null;
+    } else if (parsedName != null
+        && !strict
+        && (queryNameType == NameType.INFORMAL || queryNameType == NameType.PLACEHOLDER)) {
+      Optional<ParsedName> anchor =
+          parsedName.anchor().filter(a -> !IGNORED_ANCHORS.contains(a.canonicalNameMinimal()));
+      if (anchor.isPresent()) {
+        parsedName = anchor.get();
+        queryNameType = parsedName.getType();
+        // the rank of the anchor, a SPECIES rank given for "Abies sp." would fight the genus.
+        // A single word anchor only has the rank of its slot in the name: the "genus" of
+        // "Coleoptera sp." is an order, so leave the rank open for those.
+        rank =
+            parsedName.getSpecificEpithet() != null
+                    && parsedName.getRank() != null
+                    && parsedName.getRank().notOtherOrUnranked()
+                ? parsedName.getRank()
+                : null;
+        anchored = true;
+        log.debug("Match anchor {} of {}", parsedName.canonicalNameMinimal(), scientificName);
+      } else {
+        parsedName = null;
+      }
+    }
+
     if (parsedName != null) {
       scientificName = parsedName.canonicalNameMinimal();
 
@@ -516,9 +551,8 @@ public class MatchingService {
       }
     }
 
-    // hybrid names, OTU & blacklisted ones cannot be matched fuzzily.
-    // note this is the NameType predicate: informal names have no ParsedName of their own since
-    // 5.0.0, but they are parsable and stay eligible for fuzzy matching
+    // hybrid names, OTU, placeholders without an anchor & blacklisted ones cannot be matched fuzzily.
+    // Anchored informal names and placeholders are matched by their SCIENTIFIC anchor, see above
     if (!queryNameType.isParsable()) {
       if (mainMatchingMode != MatchingMode.STRICT) {
         // turn off fuzzy matching
@@ -584,6 +618,10 @@ public class MatchingService {
         && parsedName.getEpithet(NamePart.SPECIFIC) == null
       ){
           match1.getDiagnostics().setMatchType(MatchType.HIGHERRANK);
+      }
+      // the anchor of an informal name or placeholder is never the name itself
+      if (anchored && isMatch(match1)) {
+        match1.getDiagnostics().setMatchType(MatchType.HIGHERRANK);
       }
       match1.getDiagnostics().setTimings(timings);
       return match1;
@@ -1117,13 +1155,15 @@ public class MatchingService {
   }
 
   private int equality2Similarity(Equality eq, int factor) {
-    switch (eq) {
-      case EQUAL:
-        return 2 * factor;
-      case DIFFERENT:
-        return -3 * factor;
-    }
-    return 0;
+    return switch (eq) {
+      case EQUAL -> 2 * factor;
+      // only the basionym author cited, L. vs (L.) Mill.
+      case PROBABLY_EQUAL -> factor;
+      // a different author against a bracketed one only
+      case PROBABLY_DIFFERENT -> -factor;
+      case DIFFERENT -> -3 * factor;
+      case UNKNOWN -> 0;
+    };
   }
 
   private boolean equalClassification(RankNameResolver best, RankNameResolver m) {

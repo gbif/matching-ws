@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.catalogueoflife</groupId>
     <artifactId>motherpom</artifactId>
-    <version>1.4.1</version>
+    <version>1.7.2</version>
   </parent>
 
   <groupId>org.gbif</groupId>
@@ -21,7 +21,7 @@
   </scm>
 
   <properties>
-    <col.version>1.4.1</col.version>
+    <col.version>1.7.2</col.version>
     <java.version>25</java.version>
     <!-- JDK 23+ no longer runs annotation processors found on the classpath unless asked, and
          lombok is discovered that way. Without this every @Slf4j/@Getter expansion is missing. -->
@@ -95,9 +95,9 @@
   </distributionManagement>
 
   <!--
-    The motherpom manages all org.catalogueoflife artifacts using ${project.version}.
-    Since matching-ws has its own version (1.0.0-SNAPSHOT), we must override them
-    all here to keep them pinned at the motherpom version (1.0.2).
+    The motherpom (via its parent clb-bom) manages all org.catalogueoflife artifacts using ${project.version}.
+    Since matching-ws has its own version, we must override every module we use here to keep them pinned at
+    ${col.version}, which must equal the motherpom version.
   -->
   <dependencyManagement>
     <dependencies>
@@ -148,6 +148,11 @@
       </dependency>
       <dependency>
         <groupId>org.catalogueoflife</groupId>
+        <artifactId>nomenclature</artifactId>
+        <version>${col.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.catalogueoflife</groupId>
         <artifactId>parser</artifactId>
         <version>${col.version}</version>
       </dependency>
@@ -193,9 +198,10 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <!-- author comparison and name similarity, moved out of dao into this light module in 1.7 -->
     <dependency>
       <groupId>org.catalogueoflife</groupId>
-      <artifactId>dao</artifactId>
+      <artifactId>nomenclature</artifactId>
       <exclusions>
         <exclusion>
           <groupId>commons-logging</groupId>
@@ -529,6 +535,12 @@
       <version>${spring-boot.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- GBIF v1 vocabularies (MatchV1Controller) and match model (tests); came transitively through the CoL parser
+         until 1.7 -->
+    <dependency>
+      <groupId>org.gbif</groupId>
+      <artifactId>gbif-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-core</artifactId>
@@ -562,6 +574,16 @@
     <dependency>
       <groupId>org.gbif</groupId>
       <artifactId>name-parser-api</artifactId>
+    </dependency>
+    <!-- javax.annotation.Nullable; name-parser-api 6 no longer brings it in -->
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+    </dependency>
+    <!-- @PostConstruct in DatasetIndex; came at compile scope through the CoL dao module until 1.7 -->
+    <dependency>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
     </dependency>
     <!--
       name-parser 5.0.0 dropped the pure-Java implementation; org.gbif.nameparser:name-parser-rust
@@ -643,24 +665,9 @@
         <version>3.7.0</version>
       </plugin>
       <!--
-        Tests parse names, which downcalls into the rust parser's cdylib over FFM. Without the
-        opt-in every forked JVM warns about the restricted java.lang.foreign call, and a later JDK
-        will refuse it outright. ${java.argLine} is the motherpom's list, kept by reference.
+        Tests parse names, which downcalls into the rust parser's cdylib over FFM. The opt-in for that,
+        enable-native-access=ALL-UNNAMED, is part of the motherpom's java.argLine for surefire and failsafe.
       -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-failsafe-plugin</artifactId>
-        <configuration>
-          <argLine>${java.argLine} --enable-native-access=ALL-UNNAMED</argLine>
-        </configuration>
-      </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>

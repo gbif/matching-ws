@@ -41,30 +41,35 @@ public class NameParsers {
   }
 
   /**
-   * Parses a name, returning null instead of throwing for names that have no structure.
+   * Parses a name into a complete scientific name, returning null for anything else.
+   *
+   * <p>Informal and placeholder names such as "Abies sp." or "Asteraceae incertae sedis" do parse,
+   * but their canonical name is just the taxon they hang off, which would put them on par with that
+   * real taxon. They are therefore returned as null too, so callers keep the verbatim name. Queries
+   * that want the anchor use {@link #parsedName(ParseResult)} and {@link ParsedName#anchor()}.
    *
    * @return the parsed name, or null if the name is unparsable - a hybrid formula, an identifier
-   *     such as a BOLD BIN, a placeholder or any other non name
+   *     such as a BOLD BIN or any other non name - or if it is informal or a placeholder
    */
   @Nullable
   public static ParsedName parseOrNull(
       @Nullable String scientificName, @Nullable Rank rank, @Nullable NomCode code) {
-    return parsedName(parse(scientificName, rank, code));
+    ParsedName pn = parsedName(parse(scientificName, rank, code));
+    if (pn != null && (pn.getType() == NameType.INFORMAL || pn.getType() == NameType.PLACEHOLDER)) {
+      return null;
+    }
+    return pn;
   }
 
   /**
-   * Flattens a parse result into a ParsedName the way the parser did before 5.0.0 split informal
-   * names off into their own result variant. Informal names such as "Abies spec." carry no
-   * ParsedName of their own but rebuild into the equivalent INFORMAL one, which keeps the taxon
-   * anchor we want to match against.
+   * Since name-parser 6 informal names and placeholders with an anchor ("Chromista incertae sedis")
+   * are parsed names of type INFORMAL or PLACEHOLDER, so this is just the parsed name if there is
+   * one.
    *
    * @return the parsed name, or null for an unparsable result
    */
   @Nullable
   public static ParsedName parsedName(ParseResult result) {
-    if (result instanceof ParseResult.Informal informal) {
-      return informal.toParsedName();
-    }
     return result.parsed().orElse(null);
   }
 }
